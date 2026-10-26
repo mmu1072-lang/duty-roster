@@ -541,7 +541,7 @@ function doRender(){
   if(S.failed){m.innerHTML='<div class="view">'+emptyState('근무편성 저장소에 연결할 수 없습니다',S.failMsg||'인터넷 연결을 확인한 뒤 다시 열어 주세요.')+'</div>';return}
   const views={me:viewMe,board:viewBoard,status:viewStatus,duty:viewDuty,people:viewPeople,settings:viewSettings};
   const withDate=(S.tab==='me'&&!(S.me&&mem(S.me)))||['board','status'].includes(S.tab);
-  const deny=S.admin&&S.denied?'<div class="denied" role="alert"><b>Firebase가 저장을 거부했습니다.</b><span>Firebase 콘솔 → Firestore Database → 규칙 탭에 최신 firestore.rules(버전 2026.10.27-5) 내용을 통째로 붙여 넣고 <b>게시</b>한 뒤, 이 화면을 새로고침해 주세요. 계속되면 인원·경력에서 이 사람이 관리자 명단에 있는지 확인해 주세요.</span></div>':'';
+  const deny=S.admin&&S.denied?'<div class="denied" role="alert"><b>Firebase가 저장을 거부했습니다.</b><span>Firebase 콘솔 → Firestore Database → 규칙 탭에 최신 firestore.rules(버전 2026.10.27-6) 내용을 통째로 붙여 넣고 <b>게시</b>한 뒤, 이 화면을 새로고침해 주세요. 계속되면 인원·경력에서 이 사람이 관리자 명단에 있는지 확인해 주세요.</span></div>':'';
   m.innerHTML=deny+(withDate?dateBar():'')+'<div class="view">'+views[S.tab]()+'</div>';
 }
 function emptyState(t,p,extra){return '<div class="empty-state"><h3>'+esc(t)+'</h3><p>'+esc(p)+'</p>'+(extra||'')+'</div>'}
@@ -585,7 +585,7 @@ function viewMe(){
     sub=info.out.subId?'대직자: '+esc(nameOf(info.out.subId))+' ('+esc(mem(info.out.subId)?mem(info.out.subId).team+'팀':'')+')':'대직자 미지정';
   }else if(info.places.length){
     const p=info.places[0];
-    title=esc(p.a.n)+'<small>'+p.g+'조 · '+(p.i+1)+'번</small>';
+    title=esc(p.a.n)+'<small>'+p.g+'조 · '+esc(seatSector(p.a.k,p.i))+' · '+esc(letterOf(p.a.k,p.g,p.i))+'</small>';
     sub=shBadge(p.shift)+' '+SHIFT_TIME[p.shift]+' · '+teamPill(p.t)+(p.c.tag==='sub'?' <span class="flag info">대직 근무 · '+esc(nameOf(p.c.id))+' '+esc(p.c.duty.kind)+'</span>':'')+(!p.doc.published?' <span class="flag warn">공지 전 초안</span>':'');
     const {res}=resolved(S.date,p.t);
     const mates=res[p.a.k][p.g].filter((c,i)=>i!==p.i).map(c=>c.shown?esc(nameOf(c.shown)):'<span class="sub">결원</span>');
@@ -688,7 +688,7 @@ function boardCard(d,t){
 function cellHtml(d,t,a,g,i,c){
   const dis=S.edit?'':' disabled';const meCls=c.shown&&c.shown===S.me?' me':'';
   const attrs=' data-act="slot" data-t="'+t+'" data-a="'+a+'" data-g="'+g+'" data-i="'+i+'"'+dis;
-  const sn=letterOf(a,g,i);const sc=sn?'<span class="sc">'+esc(sn)+'</span>':'';
+  const sn=letterOf(a,g,i);const sc=sn?'<span class="sc">'+esc(seatSector(a,i))+' · '+esc(sn)+'</span>':'';
   const pk=S.edit&&S.pick&&S.pick.d===d&&+S.pick.t===+t;
   if(!c.id)return '<button class="cell empty'+(sn?' has-sc':'')+(pk?' target':'')+'"'+attrs+'>'+sc+'<span>'+(pk?'여기에 배치':S.edit?'+ 배치':'미배치')+'</span></button>';
   if(c.tag==='out')return '<button class="cell out"'+attrs+'>'+sc+'<span class="nm">결원</span><span class="ds">'+esc(nameOf(c.id))+' '+esc(c.duty.kind)+' · 대직 미지정</span></button>';
@@ -1117,6 +1117,8 @@ class KCMapFactory{constructor(){}async fetch({name}){const b=KCMAPS[name];if(!b
 /* ---------- 근무일지(근무자 현황·시간별 근무 현황) 읽기 ---------- */
 const LETTERS={mokpo:{'1':'ABC','2':'DEF'},jindo:{'1':'GHIJ','2':'KLMN'},sinan:{'1':'OP','2':'QR'}};
 const letterOf=(a,g,i)=>((LETTERS[a]||{})[g]||'')[i]||'';
+const SEAT_BASE={mokpo:1,jindo:4,sinan:8};
+const seatSector=(a,i)=>SEAT_BASE[a]?secName(SEAT_BASE[a]+i):'';
 function slotOfLetter(L){for(const a in LETTERS)for(const g in LETTERS[a]){const i=LETTERS[a][g].indexOf(L);if(i>=0)return {a,g,i}}return null}
 function rowsToItems(rows){const it=[];(rows||[]).forEach((r,y)=>(r||[]).forEach((v,x)=>{const s=String(v==null?'':v).trim();if(s)s.split(/\n/).forEach((p,k)=>{if(p.trim())it.push({s:p.trim(),x:x*60,y:y*30+k*8,w:40,h:10})})}));return it}
 function itemLines(items){
@@ -1343,7 +1345,7 @@ function viewSettings(){
   const c=S.config;
   let prev='';for(let i=0;i<9;i++){const d=addDays(c.anchorDate,i);prev+='<tr><td class="num">'+fmtShort(d)+'</td>'+[1,2,3].map(t=>'<td>'+shBadge(teamStatus(t,d))+'</td>').join('')+'</tr>'}
   const sampleCount=Object.values(S.members).filter(m=>m.sample).length;
-  return '<h2>설정 <span class="sub ver">버전 2026.10.27-5</span></h2>'+adminListCard()+
+  return '<h2>설정 <span class="sub ver">버전 2026.10.27-6</span></h2>'+adminListCard()+
   '<div class="card stack"><h3>근무 패턴 기준</h3><p class="sub" style="margin:0">주간 → 종일 → 비번 → 휴일 → 야간 → 비번 6일 순환입니다. 기준일에 주간 근무하는 팀과 야간 근무하는 팀을 지정하면 나머지 날짜가 자동 계산됩니다.</p>'+
   '<div class="fgrid"><div class="field"><label for="sAnchor">기준일</label><input type="date" class="inp" id="sAnchor" value="'+esc(c.anchorDate)+'"></div><div class="field"><label for="sDay">기준일 주간 근무팀</label><select class="inp" id="sDay">'+[1,2,3].map(t=>'<option value="'+t+'"'+(+c.dayTeam===t?' selected':'')+'>'+t+'팀</option>').join('')+'</select></div>'+
   '<div class="field"><label for="sNight">기준일 야간 근무팀</label><select class="inp" id="sNight">'+[1,2,3].map(t=>'<option value="'+t+'"'+(+c.nightTeam===t?' selected':'')+'>'+t+'팀</option>').join('')+'</select></div></div>'+
@@ -1558,7 +1560,7 @@ function viewLogin(){
     '<div class="field"><label for="lgPin">비밀번호</label><input class="inp" type="password" id="lgPin" autocomplete="current-password"></div>'+
     (L.err?'<p class="err" role="alert">'+esc(L.err)+'</p>':'')+
     '<button class="btn primary big" type="submit"'+(L.busy?' disabled':'')+'>'+(L.busy?'확인하는 중…':(adm?'관리자로 로그인':'로그인'))+'</button>'+
-    '<p class="sub" style="margin:0">계정이나 비밀번호를 모르면 슈퍼관리자에게 문의하세요. 로그인은 이 기기에 유지됩니다.</p><p class="sub ver" style="margin:0;text-align:right">버전 2026.10.27-5</p></form></div>';
+    '<p class="sub" style="margin:0">계정이나 비밀번호를 모르면 슈퍼관리자에게 문의하세요. 로그인은 이 기기에 유지됩니다.</p><p class="sub ver" style="margin:0;text-align:right">버전 2026.10.27-6</p></form></div>';
 }
 const authMsg=e=>{const c=e&&e.code||'';
   if(/invalid-credential|wrong-password|user-not-found|invalid-email|invalid-login/.test(c))return '이름 또는 비밀번호가 맞지 않습니다.';
