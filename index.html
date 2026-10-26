@@ -706,7 +706,7 @@ function planPanel(){
   let h='';
   if(false){
     h+='<div class="card stack"><div class="row between"><div style="min-width:0;flex:1"><h3>근무계획표 업로드</h3><p class="sub" style="margin:0">월간 근무계획표를 올리면 AI가 날짜별 주간·야간 근무자와 변경사항을 읽어 근무자를 캐릭터로 보여 줍니다.</p></div><div class="row"><label class="sub" for="planYm">대상 월</label><input type="month" class="inp" style="width:160px" id="planYm" value="'+ym+'"></div></div>'+
-      '<label class="drop'+(U.drag?' over':'')+'" id="planDrop" for="planFile"><input type="file" id="planFile" accept=".xlsx,.xls,.csv,.hwp,.hwpx,.png,.jpg,.jpeg,.webp,image/*" multiple hidden><b>'+(U.reading?esc(U.reading):'근무계획표 파일 선택')+'</b><span class="sub">'+(U.err?'<span style="color:var(--bad)">'+esc(U.err)+'</span>':'엑셀 · 한글(.hwp · .hwpx) · 사진(JPG · PNG) · 여러 장이면 한 번에 고르세요')+'</span></label>'+
+      '<label class="drop'+(U.drag?' over':'')+'" id="planDrop" for="planFile"><input type="file" id="planFile" accept="'+ACCEPT+'" multiple hidden><b>'+(U.reading?esc(U.reading):'근무계획표 파일 선택')+'</b><span class="sub">'+(U.err?'<span style="color:var(--bad)">'+esc(U.err)+'</span>':'엑셀 · PDF · 한글 · ODT · 파워포인트 · 사진(JPG · PNG) · 여러 개면 한 번에 고르세요')+'</span></label>'+
       (days.length?'<div class="row between"><span class="sub">'+(+ym.slice(5))+'월 계획표 '+days.length+'일치 저장됨'+(src?' · '+esc(src):'')+'</span><button class="btn sm danger'+(S.armed==='delplan'?' armed':'')+'" data-act="delplan">'+(S.armed==='delplan'?'한 번 더 누르면 삭제':'이 달 계획표 지우기')+'</button></div>':'')+'</div>';
   }
   if(p&&p.chg&&p.chg.length)h+='<div class="card stack"><div class="row between"><h3>'+fmtD(d)+' 계획표 변경사항</h3>'+(p.why?'<span class="sub">사유: '+esc(p.why)+'</span>':'')+'</div><div class="row">'+p.chg.map(c=>'<span class="pill"><b>'+esc(c.out)+'</b>'+(c.sh?' ('+esc(c.sh)+')':'')+' → <b>'+esc(c.in)+'</b></span>').join('')+'</div></div>';
@@ -894,9 +894,9 @@ function bulkInfo(){
 function bulkSheet(){
   const b=bulkInfo();const f=S.form;
   return '<div class="sheet-h"><h2>명단 일괄 등록</h2><button class="btn sm" data-act="close">닫기</button></div>'+
-  '<label class="drop'+(f.drag?' over':'')+'" id="dropZone" for="bulkFile"><input type="file" id="bulkFile" accept=".xlsx,.xls,.csv,.tsv,.txt,.hwpx" multiple hidden>'+
+  '<label class="drop'+(f.drag?' over':'')+'" id="dropZone" for="bulkFile"><input type="file" id="bulkFile" accept="'+ACCEPT+'" multiple hidden>'+
     '<b>'+(f.reading?esc(f.reading):f.fileName?esc(f.fileName)+' 불러옴':'명단 파일 선택')+'</b>'+
-    '<span class="sub">'+(f.fileErr?'<span style="color:var(--bad)">'+esc(f.fileErr)+'</span>':'끌어다 놓거나 눌러서 고르세요 · 엑셀 · CSV · 한글(.hwpx)')+'</span></label>'+
+    '<span class="sub">'+(f.fileErr?'<span style="color:var(--bad)">'+esc(f.fileErr)+'</span>':'끌어다 놓거나 눌러서 고르세요 · 엑셀 · PDF · 한글 · ODT · 파워포인트 · 사진(JPG · PNG)')+'</span></label>'+
   '<div class="stack" style="gap:6px"><p class="sub" style="margin:0"> 첫 시트의 <b>이름 · 팀 · 직책 · 관제경력 시작일 · 메모</b> 열을 읽습니다. 첫 줄에 "이름, 팀, 직책, 경력시작일" 같은 제목이 있으면 열 순서가 달라도 찾아 읽고, 제목이 없으면 이 순서로 읽습니다. 직책이 비면 근무자로, 시작일은 비워도 됩니다.</p>'+
   '<div class="tscroll" style="margin:0"><table class="sample-t"><thead><tr><th>이름</th><th>팀</th><th>직책</th><th>경력시작일</th><th>메모</th></tr></thead><tbody><tr><td>홍길동</td><td>1</td><td>정팀장</td><td>2009-03-02</td><td></td></tr><tr><td>김관제</td><td>1팀</td><td>근무자</td><td>2025.7.1</td><td>신규 발령</td></tr></tbody></table></div></div>'+
   '<div class="field"><label for="bulkText">불러온 명단 (확인·수정 후 등록)</label><textarea class="inp" rows="8" id="bulkText" data-f="text" placeholder="파일을 불러오거나 직접 붙여 넣으세요&#10;홍길동, 1, 정팀장, 2009-03-02&#10;김관제, 1, 근무자, 2025-07-01">'+esc(f.text||'')+'</textarea></div>'+
@@ -929,7 +929,75 @@ let jszipP=null,pakoP=null;
 const loadJSZip=()=>jszipP||(jszipP=loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',()=>window.JSZip).catch(e=>{jszipP=null;throw e}));
 const loadPako=()=>pakoP||(pakoP=loadScript('https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js',()=>window.pako).catch(e=>{pakoP=null;throw e}));
 class ReadErr extends Error{}
-const fileKind=f=>{const n=(f.name||'').toLowerCase();if(/\.(png|jpe?g|webp|gif)$/.test(n)||/^image\//.test(f.type||''))return 'image';if(/\.hwpx$/.test(n))return 'hwpx';if(/\.hwp$/.test(n))return 'hwp';return 'sheet'};
+/* ---------- 문서 읽기 (xlsx·ods·csv·pdf·hwpx·hwp·odt·pptx·이미지) ---------- */
+const PDFJS='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+let pdfP=null;
+const loadPdf=()=>pdfP||(pdfP=loadScript(PDFJS+'pdf.worker.min.js',()=>window.pdfjsWorker).then(()=>loadScript(PDFJS+'pdf.min.js',()=>window.pdfjsLib)).then(l=>{l.GlobalWorkerOptions.workerSrc=PDFJS+'pdf.worker.min.js';return l}).catch(e=>{pdfP=null;throw new ReadErr('PDF 읽기 도구를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.')}));
+const fileKind=f=>{const n=(f.name||'').toLowerCase();
+  if(/\.(png|jpe?g|webp|gif|bmp)$/.test(n)||/^image\//.test(f.type||''))return 'image';
+  if(/\.pdf$/.test(n)||f.type==='application/pdf')return 'pdf';
+  if(/\.hwpx$/.test(n))return 'hwpx';if(/\.hwp$/.test(n))return 'hwp';
+  if(/\.odt$/.test(n))return 'odt';if(/\.pptx$/.test(n))return 'pptx';
+  return 'sheet'};
+const KIND_LABEL={image:'사진',pdf:'PDF',hwpx:'한글',hwp:'한글',odt:'ODT 문서',pptx:'파워포인트',sheet:'표'};
+function xmlExtract(xmls,{row,cell,para,txt}){
+  const rows=[],lines=[];
+  const inCell=e=>{let p=e.parentNode;while(p&&p.nodeType===1){if(p.localName===cell)return true;p=p.parentNode}return false};
+  const textOf=e=>txt?Array.from(e.getElementsByTagName('*')).filter(x=>x.localName===txt).map(x=>x.textContent).join(''):e.textContent;
+  for(const x of xmls){const doc=new DOMParser().parseFromString(x,'application/xml');const all=Array.from(doc.getElementsByTagName('*'));
+    all.filter(e=>e.localName===row).forEach(tr=>{const cs=Array.from(tr.children).filter(c=>c.localName===cell).map(c=>textOf(c).replace(/\s+/g,' ').trim());if(cs.some(Boolean))rows.push(cs)});
+    all.filter(e=>para.includes(e.localName)&&!inCell(e)).forEach(p=>{const t=textOf(p).trim();if(t)lines.push(t)})}
+  return {rows,text:(lines.join('\n')+'\n'+rows.map(r=>r.join(' | ')).join('\n')).trim(),images:[]};
+}
+async function zipXml(file,re,sortNum){
+  const JSZip=await loadJSZip();let zip;try{zip=await JSZip.loadAsync(await file.arrayBuffer())}catch(e){throw new ReadErr(file.name+' 파일을 열지 못했습니다. 파일이 손상되지 않았는지 확인해 주세요.')}
+  const names=Object.keys(zip.files).filter(n=>re.test(n));if(sortNum)names.sort((a,b)=>parseInt(a.replace(/\D/g,''))-parseInt(b.replace(/\D/g,'')));
+  return Promise.all(names.map(n=>zip.file(n).async('string')));
+}
+async function pdfExtract(file){
+  const lib=await loadPdf();let pdf;
+  try{pdf=await lib.getDocument({data:new Uint8Array(await file.arrayBuffer()),isEvalSupported:false}).promise}catch(e){throw new ReadErr(/password/i.test(e&&e.name||'')?'암호가 걸린 PDF는 읽을 수 없습니다.':'PDF를 열지 못했습니다.')}
+  const rows=[];let chars=0;const N=Math.min(pdf.numPages,30);
+  for(let i=1;i<=N;i++){const pg=await pdf.getPage(i);const tc=await pg.getTextContent();
+    const items=tc.items.filter(t=>t.str&&t.str.trim()).map(t=>({s:t.str,x:t.transform[4],y:t.transform[5],w:t.width||0}));
+    items.sort((a,b)=>b.y-a.y||a.x-b.x);const lines=[];
+    items.forEach(t=>{const L=lines.find(l=>Math.abs(l.y-t.y)<3);if(L)L.items.push(t);else lines.push({y:t.y,items:[t]})});
+    lines.forEach(l=>{l.items.sort((a,b)=>a.x-b.x);const cells=[];let cur=null;
+      l.items.forEach(t=>{if(cur&&t.x-(cur.x+cur.w)<4){cur.s+=t.s;cur.w=t.x+t.w-cur.x}else{cur={...t};cells.push(cur)}});
+      const cs=cells.map(c=>c.s.trim()).filter(Boolean);chars+=cs.join('').length;if(cs.length)rows.push(cs)})}
+  const images=[];
+  if(chars<20){for(let i=1;i<=Math.min(pdf.numPages,4);i++){const pg=await pdf.getPage(i);const v0=pg.getViewport({scale:1});const vp=pg.getViewport({scale:Math.min(3,1800/Math.max(v0.width,v0.height))});
+    const c=document.createElement('canvas');c.width=Math.round(vp.width);c.height=Math.round(vp.height);const ctx=c.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);
+    await pg.render({canvasContext:ctx,viewport:vp}).promise;const b=await new Promise(r=>c.toBlob(r,'image/jpeg',0.9));if(b)images.push(b)}}
+  return {rows,text:rows.map(r=>r.join(' | ')).join('\n'),images};
+}
+async function sheetExtract(file){
+  const XLSX=await loadXLSX();const buf=await file.arrayBuffer();let wb;
+  if(/\.(csv|tsv|txt)$/i.test(file.name)){let text;try{text=new TextDecoder('utf-8',{fatal:true}).decode(buf)}catch(e){text=new TextDecoder('euc-kr').decode(buf)}
+    wb=XLSX.read(text.replace(/^﻿/,''),{type:'string',cellDates:true})}
+  else{try{wb=XLSX.read(buf,{type:'array',cellDates:true})}catch(e){throw new ReadErr(file.name+' 파일을 읽지 못했습니다. 엑셀(.xlsx)로 다시 저장해 올려 주세요.')}}
+  const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true,defval:''});
+  const text=wb.SheetNames.slice(0,3).map(n=>'['+n+']\n'+XLSX.utils.sheet_to_csv(wb.Sheets[n],{blankrows:false}).replace(/,{3,}/g,',,')).join('\n\n');
+  return {rows,text,images:[]};
+}
+async function extractDoc(file){
+  const k=fileKind(file);
+  if(k==='image')return {rows:[],text:'',images:[file]};
+  if(k==='sheet')return sheetExtract(file);
+  if(k==='pdf')return pdfExtract(file);
+  if(k==='hwp')return {rows:[],text:await hwpText(file),images:[]};
+  if(k==='hwpx'){const x=await zipXml(file,/^Contents\/section\d+\.xml$/i,true);if(!x.length)throw new ReadErr('한글(.hwpx) 본문을 찾지 못했습니다.');return xmlExtract(x,{row:'tr',cell:'tc',para:['p'],txt:'t'})}
+  if(k==='odt'){const x=await zipXml(file,/^content\.xml$/);if(!x.length)throw new ReadErr('ODT 본문을 찾지 못했습니다.');return xmlExtract(x,{row:'table-row',cell:'table-cell',para:['p','h'],txt:null})}
+  if(k==='pptx'){const x=await zipXml(file,/^ppt\/slides\/slide\d+\.xml$/,true);if(!x.length)throw new ReadErr('파워포인트 슬라이드를 찾지 못했습니다.');return xmlExtract(x,{row:'tr',cell:'tc',para:['p'],txt:'t'})}
+}
+const validLines=t=>String(t||'').split(/\r?\n/).filter(l=>{const p=l.split('\t');return p[0]&&/^\s*(행정|[0-3])/.test(p[1]||'')}).length;
+function localRoster(d,kind){
+  if(!d.rows.length)return '';
+  const a=rowsToLines(d.rows,true);if(validLines(a))return a;
+  if(kind==='sheet'){const b=rowsToLines(d.rows,false);if(validLines(b))return b}
+  return '';
+}
+const ACCEPT='.xlsx,.xls,.ods,.csv,.tsv,.txt,.pdf,.hwp,.hwpx,.odt,.pptx,.png,.jpg,.jpeg,.webp,image/*';
 function rowsToLines(rows,requireHeader){
   rows=rows.filter(r=>r.some(c=>String(c).trim()!==''));if(!rows.length)return '';
   let col={name:0,team:1,role:2,start:3,memo:4},body=rows,hi=-1;
@@ -941,24 +1009,6 @@ function rowsToLines(rows,requireHeader){
   const get=(r,i)=>i>=0&&i<r.length?r[i]:'';
   const cell=v=>v instanceof Date?normDate(v):String(v).replace(/[\t,\r\n]+/g,' ').trim();
   return body.map(r=>[cell(get(r,col.name)),cell(get(r,col.team)),cell(get(r,col.role)),normDate(get(r,col.start))||cell(get(r,col.start)),cell(get(r,col.memo))].join('\t').replace(/\t+$/,'')).filter(l=>l.split('\t')[0]).join('\n');
-}
-async function sheetLines(file){
-  const XLSX=await loadXLSX();const buf=await file.arrayBuffer();let wb;
-  if(/\.(csv|tsv|txt)$/i.test(file.name)){let text;try{text=new TextDecoder('utf-8',{fatal:true}).decode(buf)}catch(e){text=new TextDecoder('euc-kr').decode(buf)}
-    wb=XLSX.read(text.replace(/^﻿/,''),{type:'string',cellDates:true})}
-  else wb=XLSX.read(buf,{type:'array',cellDates:true});
-  return rowsToLines(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true,defval:''}),false);
-}
-async function hwpxContent(file){
-  const JSZip=await loadJSZip();const zip=await JSZip.loadAsync(await file.arrayBuffer());
-  const names=Object.keys(zip.files).filter(n=>/^Contents\/section\d+\.xml$/i.test(n)).sort((a,b)=>parseInt(a.replace(/\D/g,''))-parseInt(b.replace(/\D/g,'')));
-  if(!names.length)throw new ReadErr('한글(.hwpx) 본문을 찾지 못했습니다.');
-  const rows=[],lines=[];
-  for(const n of names){const doc=new DOMParser().parseFromString(await zip.file(n).async('string'),'application/xml');
-    const txt=el=>Array.from(el.getElementsByTagName('*')).filter(x=>x.localName==='t').map(x=>x.textContent).join('').trim();
-    Array.from(doc.getElementsByTagName('*')).filter(x=>x.localName==='tr').forEach(tr=>{const cells=Array.from(tr.children).filter(x=>x.localName==='tc').map(txt);if(cells.some(Boolean))rows.push(cells)});
-    Array.from(doc.getElementsByTagName('*')).filter(x=>x.localName==='p').forEach(p=>{if(!p.closest||true){const inTable=(()=>{let e=p.parentNode;while(e&&e.nodeType===1){if(e.localName==='tc')return true;e=e.parentNode}return false})();if(!inTable){const t=txt(p);if(t)lines.push(t)}}})}
-  return {rows,text:lines.join('\n')+'\n'+rows.map(r=>r.join(' | ')).join('\n')};
 }
 async function hwpText(file){
   const XLSX=await loadXLSX();const CFB=XLSX.CFB;if(!CFB)throw new ReadErr('한글 파일을 읽는 도구를 불러오지 못했습니다.');
@@ -1012,26 +1062,31 @@ async function aiLines({text,images}){
   const arr=Array.isArray(res)?res:res&&Array.isArray(res.people)?res.people:[];
   return arr.filter(p=>p&&p.name).map(p=>[String(p.name).trim(),p.team?String(p.team):'',normRole(p.role),normDate(p.start)||'',String(p.memo||'').replace(/[\t,\r\n]+/g,' ').trim()].join('\t').replace(/\t+$/,'')).join('\n');
 }
+let ocrP=null;
+const loadOCR=()=>ocrP||(ocrP=loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js',()=>window.Tesseract).catch(e=>{ocrP=null;throw new ReadErr('글자 인식 도구를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.')}));
+async function ocrRows(blobs){
+  const T=await loadOCR();const w=await T.createWorker('kor+eng');const rows=[];
+  try{for(let i=0;i<blobs.length;i++){S.form.reading='사진 글자 인식 중… '+(i+1)+'/'+blobs.length+' (처음엔 1분 정도 걸립니다)';renderSheet();
+    const r=await w.recognize(blobs[i]);String(r.data.text||'').split(/\n/).forEach(l=>{const cs=l.replace(/[|｜]/g,' ').trim().split(/\s+/).filter(Boolean);if(cs.length)rows.push(cs)})}}
+  finally{await w.terminate()}
+  return rows;
+}
 async function readRosterFiles(files){
-  if(files.some(f=>fileKind(f)==='image'||fileKind(f)==='hwp'))throw new ReadErr('사진과 한글(.hwp) 파일 읽기는 claude.ai 버전에서만 됩니다. 엑셀·CSV 또는 표가 있는 한글(.hwpx)로 올려 주세요.');
-  const parts=[],images=[],texts=[];
-  for(const f of files){const k=fileKind(f);
-    if(k==='image')images.push(f);
-    else if(k==='hwpx'){S.form.reading='한글 문서를 읽는 중…';renderSheet();const c=await hwpxContent(f);const local=rowsToLines(c.rows,true);if(local)parts.push(local);else texts.push(c.text)}
-    else if(k==='hwp'){S.form.reading='한글 문서를 읽는 중…';renderSheet();texts.push(await hwpText(f))}
-    else parts.push(await sheetLines(f))}
-  if(images.length||texts.length){
-    let tiles=[];if(images.length){const sample=window.claude?await claude.use('sample'):null;const lim=sample?await sample.limits().catch(()=>null):null;const max=lim&&lim.images?lim.images.maxCount:images.length;
-      for(const f of images){const room=Math.max(1,Math.floor(max/images.length));tiles=tiles.concat(await imageTiles(f,room))}}
-    S.form.reading='AI가 명단을 읽는 중… (30초~1분)';renderSheet();
-    parts.push(await aiLines({text:texts.join('\n\n'),images:tiles}))}
+  const parts=[],miss=[];
+  for(const f of files){const k=fileKind(f);S.form.reading=KIND_LABEL[k]+' 파일을 읽는 중…';renderSheet();
+    const d=await extractDoc(f);let local=localRoster(d,k);
+    if(!local&&d.images.length){const rows=await ocrRows(d.images);local=localRoster({rows},'sheet')}
+    if(!local&&d.text&&!d.rows.length){const rows=d.text.split(/\n/).map(l=>l.trim().split(/\s*[\t,|]\s*|\s+/).filter(Boolean)).filter(r=>r.length);local=localRoster({rows},'sheet')}
+    if(local)parts.push(local);else miss.push(f.name)}
+  if(!parts.length&&miss.length)throw new ReadErr(miss.join(', ')+'에서 이름·팀 명단을 찾지 못했습니다. 표의 첫 줄에 "이름, 팀" 제목을 넣거나 한 줄에 "이름 팀 직책" 순서로 적어 주세요.');
+  if(miss.length)toast('명단을 찾지 못한 파일: '+miss.join(', '));
   return parts.filter(Boolean).join('\n');
 }
 async function loadRosterFile(fileList){
   const files=Array.from(fileList||[]).filter(Boolean);if(!files.length||!S.form)return;
   if(files.some(f=>f.size>20*1024*1024)){S.form.fileErr='20MB 이하 파일만 읽을 수 있습니다.';renderSheet();return}
   S.form.reading='파일을 읽는 중…';S.form.fileErr='';S.form.fileName=files.map(f=>f.name).join(', ');S.form.aiUsed=files.some(f=>fileKind(f)!=='sheet');renderSheet();
-  try{const text=await readRosterFiles(files);if(!S.form)return;S.form.text=text;if(!text)S.form.fileErr='파일에서 명단을 찾지 못했습니다. 이름과 팀이 들어 있는지 확인해 주세요.'}
+  try{const text=await readRosterFiles(files);if(!S.form)return;S.form.text=text;if(!text)S.form.fileErr='명단 형식을 찾지 못했습니다. 첫 줄에 이름·팀 제목이 있는 명단 파일로 올려 주세요. 근무계획표 표는 claude.ai 버전에서 AI로 읽을 수 있습니다.'}
   catch(e){if(S.form){S.form.fileErr=e instanceof ReadErr?e.message:'파일을 읽지 못했습니다. 엑셀(.xlsx)이나 CSV로 다시 저장해 올려 주세요.';S.form.fileName='';S.form.aiUsed=false}}
   if(S.form){S.form.reading='';renderSheet()}
 }
