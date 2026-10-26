@@ -20,38 +20,39 @@ service cloud.firestore {
     // 로그인 계정과 권한
     match /users/{uid} {
       allow read: if isMember();
-      allow create: if isSuper()
+      allow create: if (isAdmin() && (request.resource.data.role != 'super' || isSuper()))
         || (signedIn() && request.auth.uid == uid && !exists(ownerPath())
             && existsAfter(ownerPath()) && request.resource.data.role == 'super');
-      allow update, delete: if isSuper();
+      allow update: if isAdmin() && (request.resource.data.role != 'super' || isSuper());
+      allow delete: if isSuper();
     }
 
-    // 경력 기록: 관리자만 읽기, 슈퍼관리자만 쓰기
+    // 경력 기록: 관리자만 읽기·쓰기
     match /careers/{id} {
       allow read: if isAdmin();
-      allow write: if isSuper();
+      allow write: if isAdmin();
     }
 
-    // 인원·설정·대직·편성·계획표: 로그인한 인원은 읽기, 슈퍼관리자만 쓰기
+    // 인원·설정·대직·편성·계획표: 로그인한 인원은 읽기, 관리자(슈퍼관리자 포함)는 쓰기
     match /members/{id} {
       allow read: if isMember();
-      allow write: if isSuper();
+      allow write: if isAdmin();
     }
     match /config/{id} {
       allow read: if isMember();
-      allow write: if isSuper();
+      allow write: if isAdmin();
     }
     match /duties/{id} {
       allow read: if isMember();
-      allow write: if isSuper();
+      allow write: if isAdmin();
     }
     match /assign/{id} {
       allow read: if isMember();
-      allow write: if isSuper();
+      allow write: if isAdmin();
     }
     match /plans/{id} {
       allow read: if isMember();
-      allow write: if isSuper();
+      allow write: if isAdmin();
     }
   }
 }
