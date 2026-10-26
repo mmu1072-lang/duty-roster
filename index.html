@@ -728,13 +728,7 @@ const PLAN_RULES=`이 자료는 해상 관제센터의 월간 근무계획표입
 - year, month: 제목에 보이면 숫자, 아니면 null.
 - 흐린 글자는 아래 등록된 이름 목록을 참고해 가장 그럴듯하게 읽으세요. 날짜 행을 하나도 빠뜨리지 마세요.
 JSON만 답하세요. 형식: {"year":2026,"month":9,"days":[{"d":1,"day":"홍길동 김관제 이해상*","night":"박바다 최등대","chg":"이해상(주)-김대직","why":"연가"}]}`;
-async function readPlanFiles(files){
-  const loc=[];
-  for(const f of files){const k=fileKind(f);S.planUp.reading=KIND_LABEL[k]+' 파일을 읽는 중…';render();
-    const d=await extractDoc(f);const sc=parseSchedule(d.rows);if(sc&&sc.plan.days.length)loc.push(sc.plan);}
-  if(!loc.length)throw new ReadErr('근무계획표 표를 찾지 못했습니다. 첫 줄 근처에 "주간", "야간" 제목이 있고 왼쪽에 날짜가 있는 엑셀 계획표로 올려 주세요.');
-  return {year:loc[0].year,month:loc[0].month,days:[].concat(...loc.map(x=>x.days))};
-}
+
 function parsePlan(res,ym){
   const days=res&&Array.isArray(res.days)?res.days:[];
   let y=+ym.slice(0,4),mo=+ym.slice(5);
@@ -936,15 +930,55 @@ const fileKind=f=>{const n=(f.name||'').toLowerCase();
   if(/\.odt$/.test(n))return 'odt';if(/\.pptx$/.test(n))return 'pptx';
   return 'sheet'};
 const KIND_LABEL={image:'사진',pdf:'PDF',hwpx:'한글',hwp:'한글',odt:'ODT 문서',pptx:'파워포인트',sheet:'표'};
-function xmlExtract(xmls,{row,cell,para,txt}){
+function nodeText(e){let o='';e.childNodes.forEach(n=>{if(n.nodeType===3)o+=n.nodeValue;else if(n.nodeType===1){const l=n.localName;if(/^(s|tab|line-break|lineBreak|br)$/.test(l))o+=' ';else{o+=nodeText(n);if(l==='p'||l==='h')o+=' '}}});return o}
+function xmlExtract(xmls,{row,cell,para}){
   const rows=[],lines=[];
   const inCell=e=>{let p=e.parentNode;while(p&&p.nodeType===1){if(p.localName===cell)return true;p=p.parentNode}return false};
-  const textOf=e=>txt?Array.from(e.getElementsByTagName('*')).filter(x=>x.localName===txt).map(x=>x.textContent).join(''):e.textContent;
   for(const x of xmls){const doc=new DOMParser().parseFromString(x,'application/xml');const all=Array.from(doc.getElementsByTagName('*'));
-    all.filter(e=>e.localName===row).forEach(tr=>{const cs=Array.from(tr.children).filter(c=>c.localName===cell).map(c=>textOf(c).replace(/\s+/g,' ').trim());if(cs.some(Boolean))rows.push(cs)});
-    all.filter(e=>para.includes(e.localName)&&!inCell(e)).forEach(p=>{const t=textOf(p).trim();if(t)lines.push(t)})}
-  return {rows,text:(lines.join('\n')+'\n'+rows.map(r=>r.join(' | ')).join('\n')).trim(),images:[]};
+    all.filter(e=>e.localName===row).forEach(tr=>{const arr=[];
+      Array.from(tr.children).filter(c=>c.localName===cell||c.localName==='covered-table-cell').forEach(c=>{
+        const t=c.localName==='covered-table-cell'?'':nodeText(c).replace(/\s+/g,' ').trim();
+        const addr=Array.from(c.children).find(k=>k.localName==='cellAddr');
+        if(addr&&addr.getAttribute('colAddr')!=null)arr[+addr.getAttribute('colAddr')]=t;
+        else{const rep=Math.min(50,+(c.getAttribute('table:number-columns-repeated')||c.getAttribute('number-columns-repeated')||1));for(let i=0;i<rep;i++)arr.push(i?'':t)}});
+      for(let i=0;i<arr.length;i++)if(arr[i]==null)arr[i]='';
+      if(arr.some(Boolean))rows.push(arr)});
+    all.filter(e=>para.includes(e.localName)&&!inCell(e)).forEach(p=>{const t=nodeText(p).replace(/\s+/g,' ').trim();if(t)lines.push(t)})}
+  return {rows,text:(lines.join('\n')+'\n'+rows.map(r=>r.filter(Boolean).join(' | ')).join('\n')).trim(),images:[]};
 }
+/* 위치 정보(PDF 글자·사진 글자 인식)로 근무계획표 표를 다시 세움: items={s,x,y(아래로 증가),w,h} */
+function gridFromItems(items,ocr){
+  if(!items||items.length<10)return null;
+  const hs=items.map(i=>i.h||8).sort((a,b)=>a-b);const H=hs[Math.floor(hs.length/2)]||8;const tol=H*0.6;
+  const sorted=items.slice().sort((a,b)=>a.y-b.y||a.x-b.x);const lines=[];
+  sorted.forEach(t=>{const L=lines.find(l=>Math.abs(l.y-t.y)<tol);if(L)L.items.push(t);else lines.push({y:t.y,items:[t]})});
+  lines.forEach(l=>l.items.sort((a,b)=>a.x-b.x));
+  const cx=i=>i.x+(i.w||0)/2;
+  const findIn=(L,re,first,second)=>{for(let k=0;k<L.items.length;k++){const t=L.items[k].s.replace(/\s/g,'');if(re.test(t))return cx(L.items[k]);if(first&&t===first&&L.items[k+1]&&L.items[k+1].s.replace(/\s/g,'').startsWith(second))return (L.items[k].x+L.items[k+1].x+(L.items[k+1].w||0))/2}return null};
+  let hy=null,dayX,nightX,chgX=null,whyX=null;
+  for(const L of lines){const d=findIn(L,/^주간/,'주','간'),n=findIn(L,/^야간/,'야','간');if(d!=null&&n!=null&&n>d){hy=L.y;dayX=d;nightX=n;
+    const hl=lines.filter(l=>Math.abs(l.y-L.y)<H*3);for(const l2 of hl){if(chgX==null)chgX=findIn(l2,/변경사항|변경내역/,'변경','사항');if(whyX==null)whyX=findIn(l2,/사유/)}break}}
+  if(hy==null)return null;
+  const half=(nightX-dayX)/2,b1=dayX+half,dayL=dayX-half*1.05,nightR=nightX+half*1.05;
+  const isD=s=>{const m=String(s).replace(/\s/g,'').match(/^(\d{1,2})일?$/);const n=m?+m[1]:0;return n>=1&&n<=31?n:0};
+  const anchors=[];lines.filter(l=>l.y>hy+H*0.5).forEach(l=>l.items.forEach(i=>{if(cx(i)<dayL&&isD(i.s))anchors.push({d:isD(i.s),y:i.y})}));
+  let topMode=false;
+  if(ocr||anchors.length<3){
+    const body=lines.filter(l=>l.y>hy+H*0.5);const firstIn=(l,a,b)=>{const it=l.items.find(i=>{const c=cx(i);return c>=a&&c<b&&/^[가-힣]{2,4}$/.test(i.s)});return it?it.s:''};
+    const fc={};body.forEach(l=>{const t=firstIn(l,dayL,b1);if(t)fc[t]=(fc[t]||0)+1});
+    const L=new Set(activeMembers().filter(m=>m.role==='정팀장'||m.role==='부팀장').map(m=>m.name));if(!L.size)Object.entries(fc).sort((a,b)=>b[1]-a[1]).slice(0,3).filter(e=>e[1]>=3).forEach(e=>L.add(e[0]));
+    topMode=true;anchors.length=0;let n=0;body.forEach(l=>{if(L.has(firstIn(l,dayL,b1))||L.has(firstIn(l,b1,nightR))){n++;anchors.push({d:n,y:l.y-0.01})}});
+    if(anchors.length<3)return null}
+  anchors.sort((a,b)=>a.y-b.y);const gaps=anchors.slice(1).map((a,k)=>a.y-anchors[k].y).sort((a,b)=>a-b);const gap=gaps[Math.floor(gaps.length/2)]||H*3;
+  const bandOf=y=>{if(topMode){let k=-1;for(let i=0;i<anchors.length;i++)if(y>=anchors[i].y-tol)k=i;return k>=0&&(k<anchors.length-1||y<anchors[k].y+gap)?k:-1}
+    for(let k=0;k<anchors.length;k++){const top=k?(anchors[k-1].y+anchors[k].y)/2:anchors[0].y-gap/2,bot=k<anchors.length-1?(anchors[k].y+anchors[k+1].y)/2:anchors[k].y+gap/2;if(y>=top&&y<bot)return k}return -1};
+  const out=anchors.map(a=>[String(a.d),'',[],[],[],[]]);
+  lines.filter(l=>l.y>hy+H*0.5).forEach(l=>{const k=bandOf(l.y);if(k<0)return;l.items.forEach(i=>{const c=cx(i);if(isD(i.s)&&c<dayL)return;
+    let col=-1;if(c>=dayL&&c<b1)col=2;else if(c>=b1&&c<nightR)col=3;else if(c>=nightR){col=whyX!=null&&c>=((chgX!=null?chgX:nightR)+whyX)/2?5:4}
+    if(col>0)out[k][col].push(i.s)})});
+  return [['날짜','요일','주간','야간','변경사항','사유']].concat(out.map(r=>[r[0],'',r[2].join(' '),r[3].join(' '),r[4].join('\n'),r[5].join(' ')]));
+}
+function schedFrom(d,name){const hint=String(d.text||'').slice(0,300)+' '+(name||'');let sc=d.ocr?null:parseSchedule(d.rows,hint);if(sc&&sc.people)return sc;if(d.items){const g=gridFromItems(d.items,d.ocr);if(g){sc=parseSchedule(g,hint);if(sc&&sc.people)return sc}}return null}
 async function zipXml(file,re,sortNum){
   const JSZip=await loadJSZip();let zip;try{zip=await JSZip.loadAsync(await file.arrayBuffer())}catch(e){throw new ReadErr(file.name+' 파일을 열지 못했습니다. 파일이 손상되지 않았는지 확인해 주세요.')}
   const names=Object.keys(zip.files).filter(n=>re.test(n));if(sortNum)names.sort((a,b)=>parseInt(a.replace(/\D/g,''))-parseInt(b.replace(/\D/g,'')));
@@ -953,9 +987,10 @@ async function zipXml(file,re,sortNum){
 async function pdfExtract(file){
   const lib=await loadPdf();let pdf;
   try{pdf=await lib.getDocument({data:new Uint8Array(await file.arrayBuffer()),isEvalSupported:false}).promise}catch(e){throw new ReadErr(/password/i.test(e&&e.name||'')?'암호가 걸린 PDF는 읽을 수 없습니다.':'PDF를 열지 못했습니다.')}
-  const rows=[];let chars=0;const N=Math.min(pdf.numPages,30);
-  for(let i=1;i<=N;i++){const pg=await pdf.getPage(i);const tc=await pg.getTextContent();
+  const rows=[],all=[];let chars=0,yoff=0;const N=Math.min(pdf.numPages,30);
+  for(let i=1;i<=N;i++){const pg=await pdf.getPage(i);const tc=await pg.getTextContent();const vh=pg.getViewport({scale:1}).height;
     const items=tc.items.filter(t=>t.str&&t.str.trim()).map(t=>({s:t.str,x:t.transform[4],y:t.transform[5],w:t.width||0}));
+    items.forEach(t=>all.push({s:t.s.trim(),x:t.x,y:yoff+(vh-t.y),w:t.w,h:Math.abs((tc.items.find(z=>z.str===t.s)||{}).height||8)}));yoff+=vh+50;
     items.sort((a,b)=>b.y-a.y||a.x-b.x);const lines=[];
     items.forEach(t=>{const L=lines.find(l=>Math.abs(l.y-t.y)<3);if(L)L.items.push(t);else lines.push({y:t.y,items:[t]})});
     lines.forEach(l=>{l.items.sort((a,b)=>a.x-b.x);const cells=[];let cur=null;
@@ -965,7 +1000,7 @@ async function pdfExtract(file){
   if(chars<20){for(let i=1;i<=Math.min(pdf.numPages,4);i++){const pg=await pdf.getPage(i);const v0=pg.getViewport({scale:1});const vp=pg.getViewport({scale:Math.min(3,1800/Math.max(v0.width,v0.height))});
     const c=document.createElement('canvas');c.width=Math.round(vp.width);c.height=Math.round(vp.height);const ctx=c.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);
     await pg.render({canvasContext:ctx,viewport:vp}).promise;const b=await new Promise(r=>c.toBlob(r,'image/jpeg',0.9));if(b)images.push(b)}}
-  return {rows,text:rows.map(r=>r.join(' | ')).join('\n'),images};
+  return {rows,items:all,text:rows.map(r=>r.join(' | ')).join('\n'),images};
 }
 async function sheetExtract(file){
   const XLSX=await loadXLSX();const buf=await file.arrayBuffer();let wb;
@@ -982,20 +1017,20 @@ async function extractDoc(file){
   if(k==='sheet')return sheetExtract(file);
   if(k==='pdf')return pdfExtract(file);
   if(k==='hwp')return {rows:[],text:await hwpText(file),images:[]};
-  if(k==='hwpx'){const x=await zipXml(file,/^Contents\/section\d+\.xml$/i,true);if(!x.length)throw new ReadErr('한글(.hwpx) 본문을 찾지 못했습니다.');return xmlExtract(x,{row:'tr',cell:'tc',para:['p'],txt:'t'})}
-  if(k==='odt'){const x=await zipXml(file,/^content\.xml$/);if(!x.length)throw new ReadErr('ODT 본문을 찾지 못했습니다.');return xmlExtract(x,{row:'table-row',cell:'table-cell',para:['p','h'],txt:null})}
-  if(k==='pptx'){const x=await zipXml(file,/^ppt\/slides\/slide\d+\.xml$/,true);if(!x.length)throw new ReadErr('파워포인트 슬라이드를 찾지 못했습니다.');return xmlExtract(x,{row:'tr',cell:'tc',para:['p'],txt:'t'})}
+  if(k==='hwpx'){const x=await zipXml(file,/^Contents\/section\d+\.xml$/i,true);if(!x.length)throw new ReadErr('한글(.hwpx) 본문을 찾지 못했습니다.');return xmlExtract(x,{row:'tr',cell:'tc',para:['p']})}
+  if(k==='odt'){const x=await zipXml(file,/^content\.xml$/);if(!x.length)throw new ReadErr('ODT 본문을 찾지 못했습니다.');return xmlExtract(x,{row:'table-row',cell:'table-cell',para:['p','h']})}
+  if(k==='pptx'){const x=await zipXml(file,/^ppt\/slides\/slide\d+\.xml$/,true);if(!x.length)throw new ReadErr('파워포인트 슬라이드를 찾지 못했습니다.');return xmlExtract(x,{row:'tr',cell:'tc',para:['p']})}
 }
 const validLines=t=>String(t||'').split(/\r?\n/).filter(l=>{const p=l.split('\t');return p[0]&&/^\s*(행정|[0-3])/.test(p[1]||'')}).length;
 function localRoster(d,kind){
-  if(!d.rows.length)return '';
+  if(!d.rows.length&&!d.items)return '';
   const a=rowsToLines(d.rows,true);if(validLines(a))return a;
-  const sc=parseSchedule(d.rows);if(sc&&sc.people)return sc.rosterLines;
+  const sc=schedFrom(d);if(sc)return sc.rosterLines;
   if(kind==='sheet'){const b=rowsToLines(d.rows,false);if(validLines(b))return b}
   return '';
 }
 /* ---------- 근무계획표 표 해석 (AI 없이) ---------- */
-function parseSchedule(rows){
+function parseSchedule(rows,hint){
   if(!rows||rows.length<6)return null;
   const str=v=>v instanceof Date?'':String(v==null?'':v).trim();
   let h=-1,dayC=-1,nightC=-1,chgC=-1,whyC=-1;
@@ -1004,12 +1039,15 @@ function parseSchedule(rows){
     if(di>=0&&ni>di){h=r;dayC=di;nightC=ni;chgC=row.findIndex(c=>/변경\s*사항/.test(str(c)));whyC=row.findIndex(c=>/사\s*유/.test(str(c)));break}}
   if(h<0)return null;
   const width=Math.max(...rows.map(r=>(r||[]).length));
-  const nightEnd=chgC>nightC?chgC:(whyC>nightC?whyC:width);
   const isDay=v=>{const n=typeof v==='number'?v:(/^\s*\d{1,2}\s*$/.test(str(v))?+str(v):NaN);return Number.isInteger(n)&&n>=1&&n<=31?n:0};
   let dateCol=-1,best=0;for(let c=0;c<dayC;c++){let k=0;for(let r=h+1;r<rows.length;r++)if(isDay((rows[r]||[])[c]))k++;if(k>best){best=k;dateCol=c}}
   if(dateCol<0||best<3)return null;
   const isName=s=>/^[가-힣]{2,4}$/.test(s)&&!/^(주간|야간|종일|비번|휴일|요일|연가|교육|합계|비고|변경|사유|근무|월|화|수|목|금|토|일)$/.test(s);
   const namesIn=(row,a,b)=>{const o=[];for(let c=a;c<b;c++){str((row||[])[c]).split(/[\s,·\n]+/).forEach(t=>{t=t.replace(/[*＊()0-9]/g,'');if(isName(t))o.push(t)})}return o};
+  {const nameCell=v=>{const t=str(v).split(/[\s,·\n]+/).filter(Boolean);return t.length&&t.every(x=>isName(x.replace(/[*＊]/g,'')))};let mx=-1;
+    for(let r=h+1;r<rows.length;r++){const row=rows[r]||[];for(let c=dayC;c<row.length;c++)if(nameCell(row[c])&&c>mx)mx=c}
+    const W=mx-dayC+1;if(mx>=0&&W%2===0&&Math.abs(W-2*(nightC-dayC))>1&&(chgC<0||chgC<=dayC+W/2||chgC>mx)){nightC=dayC+W/2;if(!(chgC>mx))chgC=-1;if(!(whyC>mx))whyC=-1}}
+  const nightEnd=chgC>nightC?chgC:(whyC>nightC?whyC:width);
   const days=[];let cur=null;
   for(let r=h+1;r<rows.length;r++){const row=rows[r]||[];const dv=(row[dateCol]);
     if(isDay(dv)){cur={d:isDay(dv),day:[],night:[],chg:[],why:[]};days.push(cur)}
@@ -1035,7 +1073,7 @@ function parseSchedule(rows){
   const avg=x=>pos[x].reduce((s,v)=>s+v,0)/pos[x].length;
   const roster=[];leaders.forEach((_,i)=>{const ms=Object.keys(member).filter(x=>member[x]===i).sort((a,b)=>avg(a)-avg(b));
     ms.forEach((x,k)=>roster.push([x,String(num[i]),k===0&&avg(x)<1?'정팀장':k===1&&avg(x)<2?'부팀장':'근무자'].join('\t')))});
-  let title='';for(let r=0;r<h;r++)title+=' '+(rows[r]||[]).map(str).join(' ');
+  let title='';for(let r=0;r<h;r++)title+=' '+(rows[r]||[]).map(str).join(' ');title+=' '+(hint||'');
   const mo=(title.match(/(\d{1,2})\s*월/)||[])[1],yr=(title.match(/(20\d{2})/)||[])[1];
   const mark=(arr)=>{const t=teamOfBlock(arr.length?arr:['']);return arr.map(x=>member[x]===t?x:x+'*').join(' ')};
   return {rosterLines:roster.join('\n'),teams:leaders.length,people:roster.length,
@@ -1108,23 +1146,44 @@ async function aiLines({text,images}){
 }
 let ocrP=null;
 const loadOCR=()=>ocrP||(ocrP=loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js',()=>window.Tesseract).catch(e=>{ocrP=null;throw new ReadErr('글자 인식 도구를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.')}));
-async function ocrRows(blobs){
-  const T=await loadOCR();const w=await T.createWorker('kor+eng');const rows=[];
-  try{for(let i=0;i<blobs.length;i++){S.form.reading='사진 글자 인식 중… '+(i+1)+'/'+blobs.length+' (처음엔 1분 정도 걸립니다)';renderSheet();
-    const r=await w.recognize(blobs[i]);String(r.data.text||'').split(/\n/).forEach(l=>{const cs=l.replace(/[|｜]/g,' ').trim().split(/\s+/).filter(Boolean);if(cs.length)rows.push(cs)})}}
+
+function snapName(t){const names=[...new Set(activeMembers().map(m=>m.name))];if(!/^[가-힣]{2,4}$/.test(t)||names.includes(t))return t;
+  let c=names.filter(n=>n.length===t.length&&[...n].filter((ch,i)=>ch!==t[i]).length===1);if(c.length===1)return c[0];
+  if(t.length===2){c=names.filter(n=>n.length===3&&(n.endsWith(t)||n.startsWith(t)));if(c.length===1)return c[0]}return t}
+async function ocrScan(blobs,progress){
+  const T=await loadOCR();const w=await T.createWorker('kor+eng');const rows=[],items=[];let yoff=0;
+  try{for(let i=0;i<blobs.length;i++){progress('사진 글자 인식 중… '+(i+1)+'/'+blobs.length+' (처음엔 1분 정도 걸립니다)');
+    const r=await w.recognize(blobs[i],{},{text:true,tsv:true});let maxY=0;
+    String(r.data.tsv||'').split('\n').forEach(l=>{const c=l.split('\t');if(c[0]!=='5'||c.length<12)return;let s=String(c[11]||'').replace(/[|｜_…·,.\-]/g,'').trim();if(/[가-힣]/.test(s))s=s.replace(/[^가-힣0-9]/g,'');s=snapName(s);if(!s)return;
+      const x=+c[6],y=+c[7],w2=+c[8],h=+c[9];maxY=Math.max(maxY,y+h);items.push({s,x,y:yoff+y,w:w2,h})});
+    {const NAMES=new Set(activeMembers().map(m=>m.name));const page=items.filter(i=>i.y>=yoff);const keep=items.filter(i=>i.y<yoff);page.sort((a,b)=>a.y-b.y||a.x-b.x);const merged=[];
+      page.forEach(i=>{const p=merged[merged.length-1];if(p&&/^[가-힣]{1,3}$/.test(p.s)&&/^[가-힣]{1,2}$/.test(i.s)&&p.s.length+i.s.length<=4&&Math.abs(p.y-i.y)<i.h*0.6&&i.x-(p.x+p.w)<i.h*0.7&&(p.s.length===1||i.s.length===1)&&(p.s.length+i.s.length<=3||NAMES.has(p.s+i.s))){p.s+=i.s;p.w=i.x+i.w-p.x}else merged.push({...i})});
+      merged.forEach(i=>{i.s=snapName(i.s)});items.length=0;items.push(...keep,...merged)}
+    String(r.data.text||'').split(/\n/).forEach(l=>{const cs=l.replace(/[|｜]/g,' ').trim().split(/\s+/).filter(Boolean).map(snapName);if(cs.length)rows.push(cs)});
+    yoff+=maxY+200}}
   finally{await w.terminate()}
-  return rows;
+  return {rows,items,ocr:true,text:rows.map(r=>r.join(' ')).join('\n'),images:[]};
 }
 async function readRosterFiles(files){
   const parts=[],miss=[];
   for(const f of files){const k=fileKind(f);S.form.reading=KIND_LABEL[k]+' 파일을 읽는 중…';renderSheet();
-    const d=await extractDoc(f);let local=localRoster(d,k);
-    if(!local&&d.images.length){const rows=await ocrRows(d.images);local=localRoster({rows},'sheet')}
+    let d=await extractDoc(f);let local=localRoster(d,k);
+    if(!local&&d.images.length){d=await ocrScan(d.images,m=>{if(S.form){S.form.reading=m;renderSheet()}});local=localRoster(d,'sheet')}
     if(!local&&d.text&&!d.rows.length){const rows=d.text.split(/\n/).map(l=>l.trim().split(/\s*[\t,|]\s*|\s+/).filter(Boolean)).filter(r=>r.length);local=localRoster({rows},'sheet')}
     if(local)parts.push(local);else miss.push(f.name)}
-  if(!parts.length&&miss.length)throw new ReadErr(miss.join(', ')+'에서 이름·팀 명단을 찾지 못했습니다. 표의 첫 줄에 "이름, 팀" 제목을 넣거나 한 줄에 "이름 팀 직책" 순서로 적어 주세요.');
+  if(!parts.length&&miss.length)throw new ReadErr(miss.join(', ')+'에서 명단을 찾지 못했습니다. 표의 첫 줄에 "이름, 팀" 제목이 있는 명단이나, "주간·야간" 칸이 있는 근무계획표로 올려 주세요.');
   if(miss.length)toast('명단을 찾지 못한 파일: '+miss.join(', '));
   return parts.filter(Boolean).join('\n');
+}
+async function readPlanFiles(files){
+  const loc=[],miss=[];
+  for(const f of files){const k=fileKind(f);S.planUp.reading=KIND_LABEL[k]+' 파일을 읽는 중…';render();
+    let d=await extractDoc(f);let sc=schedFrom(d,f&&f.name);
+    if(!sc&&d.images.length){d=await ocrScan(d.images,m=>{S.planUp.reading=m;render()});sc=schedFrom(d,f&&f.name)}
+    if(sc&&sc.plan.days.length)loc.push(sc.plan);else miss.push(f.name)}
+  if(!loc.length)throw new ReadErr((miss.join(', ')||'파일')+'에서 근무계획표를 찾지 못했습니다. "주간", "야간" 제목과 왼쪽 날짜 칸이 있는 표인지 확인해 주세요.'+(files.some(f=>fileKind(f)==='hwp')?' 한글은 .hwpx로 저장해 올려 주세요.':''));
+  if(miss.length)toast('읽지 못한 파일: '+miss.join(', '));
+  return {year:loc[0].year,month:loc[0].month,days:[].concat(...loc.map(x=>x.days))};
 }
 async function loadRosterFile(fileList){
   const files=Array.from(fileList||[]).filter(Boolean);if(!files.length||!S.form)return;
@@ -1140,7 +1199,7 @@ function viewSettings(){
   const c=S.config;
   let prev='';for(let i=0;i<9;i++){const d=addDays(c.anchorDate,i);prev+='<tr><td class="num">'+fmtShort(d)+'</td>'+[1,2,3].map(t=>'<td>'+shBadge(teamStatus(t,d))+'</td>').join('')+'</tr>'}
   const sampleCount=Object.values(S.members).filter(m=>m.sample).length;
-  return '<h2>설정 <span class="sub ver">버전 2026.10.26-4</span></h2>'+adminListCard()+
+  return '<h2>설정 <span class="sub ver">버전 2026.10.27-1</span></h2>'+adminListCard()+
   '<div class="card stack"><h3>근무 패턴 기준</h3><p class="sub" style="margin:0">주간 → 종일 → 비번 → 휴일 → 야간 → 비번 6일 순환입니다. 기준일에 주간 근무하는 팀과 야간 근무하는 팀을 지정하면 나머지 날짜가 자동 계산됩니다.</p>'+
   '<div class="fgrid"><div class="field"><label for="sAnchor">기준일</label><input type="date" class="inp" id="sAnchor" value="'+esc(c.anchorDate)+'"></div><div class="field"><label for="sDay">기준일 주간 근무팀</label><select class="inp" id="sDay">'+[1,2,3].map(t=>'<option value="'+t+'"'+(+c.dayTeam===t?' selected':'')+'>'+t+'팀</option>').join('')+'</select></div>'+
   '<div class="field"><label for="sNight">기준일 야간 근무팀</label><select class="inp" id="sNight">'+[1,2,3].map(t=>'<option value="'+t+'"'+(+c.nightTeam===t?' selected':'')+'>'+t+'팀</option>').join('')+'</select></div></div>'+
@@ -1354,7 +1413,7 @@ function viewLogin(){
     '<div class="field"><label for="lgPin">비밀번호</label><input class="inp" type="password" id="lgPin" autocomplete="current-password"></div>'+
     (L.err?'<p class="err" role="alert">'+esc(L.err)+'</p>':'')+
     '<button class="btn primary big" type="submit"'+(L.busy?' disabled':'')+'>'+(L.busy?'확인하는 중…':(adm?'관리자로 로그인':'로그인'))+'</button>'+
-    '<p class="sub" style="margin:0">계정이나 비밀번호를 모르면 슈퍼관리자에게 문의하세요. 로그인은 이 기기에 유지됩니다.</p><p class="sub ver" style="margin:0;text-align:right">버전 2026.10.26-4</p></form></div>';
+    '<p class="sub" style="margin:0">계정이나 비밀번호를 모르면 슈퍼관리자에게 문의하세요. 로그인은 이 기기에 유지됩니다.</p><p class="sub ver" style="margin:0;text-align:right">버전 2026.10.27-1</p></form></div>';
 }
 const authMsg=e=>{const c=e&&e.code||'';
   if(/invalid-credential|wrong-password|user-not-found|invalid-email|invalid-login/.test(c))return '이름 또는 비밀번호가 맞지 않습니다.';
