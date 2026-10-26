@@ -704,8 +704,8 @@ function planPanel(){
   const d=S.date,p=planOf(d);const ym=S.planYm||d.slice(0,7);const U=S.planUp||{};
   const days=Object.values(S.plans).filter(x=>String(x.date).slice(0,7)===ym);const src=days.map(x=>x.source).filter(Boolean)[0];
   let h='';
-  if(false){
-    h+='<div class="card stack"><div class="row between"><div style="min-width:0;flex:1"><h3>근무계획표 업로드</h3><p class="sub" style="margin:0">월간 근무계획표를 올리면 AI가 날짜별 주간·야간 근무자와 변경사항을 읽어 근무자를 캐릭터로 보여 줍니다.</p></div><div class="row"><label class="sub" for="planYm">대상 월</label><input type="month" class="inp" style="width:160px" id="planYm" value="'+ym+'"></div></div>'+
+  if(S.edit){
+    h+='<div class="card stack"><div class="row between"><div style="min-width:0;flex:1"><h3>근무계획표 업로드</h3><p class="sub" style="margin:0">월간 근무계획표를 올리면 날짜별 주간·야간 근무자와 변경사항을 읽어 근무자를 캐릭터로 보여 줍니다. 엑셀 계획표는 바로 읽고.</p></div><div class="row"><label class="sub" for="planYm">대상 월</label><input type="month" class="inp" style="width:160px" id="planYm" value="'+ym+'"></div></div>'+
       '<label class="drop'+(U.drag?' over':'')+'" id="planDrop" for="planFile"><input type="file" id="planFile" accept="'+ACCEPT+'" multiple hidden><b>'+(U.reading?esc(U.reading):'근무계획표 파일 선택')+'</b><span class="sub">'+(U.err?'<span style="color:var(--bad)">'+esc(U.err)+'</span>':'엑셀 · PDF · 한글 · ODT · 파워포인트 · 사진(JPG · PNG) · 여러 개면 한 번에 고르세요')+'</span></label>'+
       (days.length?'<div class="row between"><span class="sub">'+(+ym.slice(5))+'월 계획표 '+days.length+'일치 저장됨'+(src?' · '+esc(src):'')+'</span><button class="btn sm danger'+(S.armed==='delplan'?' armed':'')+'" data-act="delplan">'+(S.armed==='delplan'?'한 번 더 누르면 삭제':'이 달 계획표 지우기')+'</button></div>':'')+'</div>';
   }
@@ -720,27 +720,11 @@ const PLAN_RULES=`이 자료는 해상 관제센터의 월간 근무계획표입
 - 흐린 글자는 아래 등록된 이름 목록을 참고해 가장 그럴듯하게 읽으세요. 날짜 행을 하나도 빠뜨리지 마세요.
 JSON만 답하세요. 형식: {"year":2026,"month":9,"days":[{"d":1,"day":"홍길동 김관제 이해상*","night":"박바다 최등대","chg":"이해상(주)-김대직","why":"연가"}]}`;
 async function readPlanFiles(files){
-  throw new ReadErr('근무계획표 AI 읽기는 claude.ai 버전에서만 됩니다.');
-  const images=[],texts=[];
-  for(const f of files){const k=fileKind(f);
-    if(k==='image')images.push(f);
-    else if(k==='hwpx'){const c=await hwpxContent(f);texts.push(c.text)}
-    else if(k==='hwp')texts.push(await hwpText(f));
-    else{const XLSX=await loadXLSX();const buf=await f.arrayBuffer();let wb;
-      if(/\.(csv|tsv|txt)$/i.test(f.name)){let t;try{t=new TextDecoder('utf-8',{fatal:true}).decode(buf)}catch(e){t=new TextDecoder('euc-kr').decode(buf)}texts.push(t)}
-      else{wb=XLSX.read(buf,{type:'array',cellDates:true});wb.SheetNames.slice(0,3).forEach(n=>texts.push('['+n+']\n'+XLSX.utils.sheet_to_csv(wb.Sheets[n],{blankrows:false})))}}}
-  const sample=window.claude?await claude.use('sample'):null;
-  if(!sample)throw new ReadErr('이 화면에서는 AI 읽기를 쓸 수 없습니다.');
-  let tiles=[];
-  if(images.length){const lim=await sample.limits().catch(()=>null);if(!lim||!lim.images)throw new ReadErr('이 화면에서는 사진을 읽을 수 없습니다. 엑셀이나 한글 파일로 올려 주세요.');
-    const max=lim.images.maxCount;for(const f of images)tiles=tiles.concat(await imageTiles(f,Math.max(1,Math.floor(max/images.length))));tiles=tiles.slice(0,max)}
-  S.planUp.reading='AI가 근무계획표를 읽는 중… (1~2분)';render();
-  const names=[...new Set(activeMembers().map(m=>m.name))].join(' ');
-  const prompt=PLAN_RULES+'\n\n등록된 이름 목록: '+names+(tiles.length?'\n\n첨부 이미지 '+tiles.length+'장은 계획표를 위에서부터 순서대로 나눈 것입니다(여러 파일이면 파일 순서대로).':'')+(texts.length?'\n\n자료 본문:\n'+texts.join('\n\n').slice(0,90000):'');
-  let res;
-  try{res=await sample.json(prompt,{modelTier:'complex',images:tiles.length?tiles:undefined})}
-  catch(e){const c=e&&e.code;throw new ReadErr(c==='not_granted'||c==='sampling_disabled'?'AI 읽기가 허용되지 않았습니다.':c==='rate_limited'?'AI 사용량이 많습니다. 잠시 후 다시 시도해 주세요.':c==='image_rejected'?'사진을 처리하지 못했습니다. 더 작은 JPG나 PNG로 올려 주세요.':c==='invalid_json'?'AI가 계획표를 끝까지 읽지 못했습니다. 보름씩 나눠 올려 보세요.':'AI가 계획표를 읽지 못했습니다. 다시 시도해 주세요.')}
-  return res;
+  const loc=[];
+  for(const f of files){const k=fileKind(f);S.planUp.reading=KIND_LABEL[k]+' 파일을 읽는 중…';render();
+    const d=await extractDoc(f);const sc=parseSchedule(d.rows);if(sc&&sc.plan.days.length)loc.push(sc.plan);}
+  if(!loc.length)throw new ReadErr('근무계획표 표를 찾지 못했습니다. 첫 줄 근처에 "주간", "야간" 제목이 있고 왼쪽에 날짜가 있는 엑셀 계획표로 올려 주세요.');
+  return {year:loc[0].year,month:loc[0].month,days:[].concat(...loc.map(x=>x.days))};
 }
 function parsePlan(res,ym){
   const days=res&&Array.isArray(res.days)?res.days:[];
@@ -994,8 +978,56 @@ const validLines=t=>String(t||'').split(/\r?\n/).filter(l=>{const p=l.split('\t'
 function localRoster(d,kind){
   if(!d.rows.length)return '';
   const a=rowsToLines(d.rows,true);if(validLines(a))return a;
+  const sc=parseSchedule(d.rows);if(sc&&sc.people)return sc.rosterLines;
   if(kind==='sheet'){const b=rowsToLines(d.rows,false);if(validLines(b))return b}
   return '';
+}
+/* ---------- 근무계획표 표 해석 (AI 없이) ---------- */
+function parseSchedule(rows){
+  if(!rows||rows.length<6)return null;
+  const str=v=>v instanceof Date?'':String(v==null?'':v).trim();
+  let h=-1,dayC=-1,nightC=-1,chgC=-1,whyC=-1;
+  for(let r=0;r<Math.min(rows.length,15);r++){const row=rows[r]||[];
+    const di=row.findIndex(c=>/주\s*간/.test(str(c))),ni=row.findIndex(c=>/야\s*간/.test(str(c)));
+    if(di>=0&&ni>di){h=r;dayC=di;nightC=ni;chgC=row.findIndex(c=>/변경\s*사항/.test(str(c)));whyC=row.findIndex(c=>/사\s*유/.test(str(c)));break}}
+  if(h<0)return null;
+  const width=Math.max(...rows.map(r=>(r||[]).length));
+  const nightEnd=chgC>nightC?chgC:(whyC>nightC?whyC:width);
+  const isDay=v=>{const n=typeof v==='number'?v:(/^\s*\d{1,2}\s*$/.test(str(v))?+str(v):NaN);return Number.isInteger(n)&&n>=1&&n<=31?n:0};
+  let dateCol=-1,best=0;for(let c=0;c<dayC;c++){let k=0;for(let r=h+1;r<rows.length;r++)if(isDay((rows[r]||[])[c]))k++;if(k>best){best=k;dateCol=c}}
+  if(dateCol<0||best<3)return null;
+  const isName=s=>/^[가-힣]{2,4}$/.test(s)&&!/^(주간|야간|종일|비번|휴일|요일|연가|교육|합계|비고|변경|사유|근무|월|화|수|목|금|토|일)$/.test(s);
+  const namesIn=(row,a,b)=>{const o=[];for(let c=a;c<b;c++){str((row||[])[c]).split(/[\s,·\n]+/).forEach(t=>{t=t.replace(/[*＊()0-9]/g,'');if(isName(t))o.push(t)})}return o};
+  const days=[];let cur=null;
+  for(let r=h+1;r<rows.length;r++){const row=rows[r]||[];const dv=(row[dateCol]);
+    if(isDay(dv)){cur={d:isDay(dv),day:[],night:[],chg:[],why:[]};days.push(cur)}
+    else if(str(dv)){cur=null;continue}
+    if(!cur)continue;
+    cur.day.push(...namesIn(row,dayC,nightC));cur.night.push(...namesIn(row,nightC,nightEnd));
+    if(chgC>=0){const t=str(row[chgC]);if(t)cur.chg.push(...t.split(/\n/).map(x=>x.trim()).filter(Boolean))}
+    if(whyC>=0){const t=str(row[whyC]);if(t)cur.why.push(t.replace(/\n/g,','))}}
+  const blocks=[];days.forEach(x=>{if(x.day.length>2)blocks.push(x.day);if(x.night.length>2)blocks.push(x.night)});
+  if(blocks.length<3)return null;
+  const lc={};blocks.forEach(b=>{lc[b[0]]=(lc[b[0]]||0)+1});
+  const leaders=Object.entries(lc).filter(e=>e[1]>=2).sort((a,b)=>b[1]-a[1]).slice(0,3).map(e=>e[0]);
+  if(!leaders.length)return null;
+  const core=leaders.map(L=>{const cnt={};let n=0;blocks.filter(b=>b[0]===L).forEach(b=>{n++;new Set(b).forEach(x=>{cnt[x]=(cnt[x]||0)+1})});return new Set(Object.keys(cnt).filter(x=>cnt[x]>=n*0.5))});
+  const teamOfBlock=b=>{let bi=leaders.indexOf(b[0]);if(bi>=0)return bi;let bs=-1;core.forEach((s,i)=>{const o=b.filter(x=>s.has(x)).length;if(o>bs){bs=o;bi=i}});return bi};
+  const cnt={},pos={},nb=leaders.map(()=>0);
+  blocks.forEach(b=>{const t=teamOfBlock(b);nb[t]++;b.forEach((x,i)=>{cnt[x]=cnt[x]||leaders.map(()=>0);cnt[x][t]++;(pos[x]=pos[x]||[]).push(i)})});
+  const member={};Object.entries(cnt).forEach(([x,a])=>{let t=a.indexOf(Math.max(...a));if(a[t]>=nb[t]*0.4)member[x]=t});
+  const known={};activeMembers().forEach(m=>{known[m.name]=+m.team});
+  const num=leaders.map(()=>0),used=new Set();
+  leaders.forEach((_,i)=>{const v={};Object.keys(member).filter(x=>member[x]===i&&known[x]!=null).forEach(x=>{v[known[x]]=(v[known[x]]||0)+1});const top=Object.entries(v).sort((a,b)=>b[1]-a[1])[0];if(top&&!used.has(+top[0])){num[i]=+top[0];used.add(+top[0])}});
+  leaders.forEach((_,i)=>{if(!num[i]){for(let t=1;t<=3;t++)if(!used.has(t)){num[i]=t;used.add(t);break}}});
+  const avg=x=>pos[x].reduce((s,v)=>s+v,0)/pos[x].length;
+  const roster=[];leaders.forEach((_,i)=>{const ms=Object.keys(member).filter(x=>member[x]===i).sort((a,b)=>avg(a)-avg(b));
+    ms.forEach((x,k)=>roster.push([x,String(num[i]),k===0&&avg(x)<1?'정팀장':k===1&&avg(x)<2?'부팀장':'근무자'].join('\t')))});
+  let title='';for(let r=0;r<h;r++)title+=' '+(rows[r]||[]).map(str).join(' ');
+  const mo=(title.match(/(\d{1,2})\s*월/)||[])[1],yr=(title.match(/(20\d{2})/)||[])[1];
+  const mark=(arr)=>{const t=teamOfBlock(arr.length?arr:['']);return arr.map(x=>member[x]===t?x:x+'*').join(' ')};
+  return {rosterLines:roster.join('\n'),teams:leaders.length,people:roster.length,
+    plan:{year:yr?+yr:null,month:mo?+mo:null,days:days.map(x=>({d:x.d,day:x.day.length?mark(x.day):'',night:x.night.length?mark(x.night):'',chg:x.chg.join(';'),why:x.why.join(',')}))}};
 }
 const ACCEPT='.xlsx,.xls,.ods,.csv,.tsv,.txt,.pdf,.hwp,.hwpx,.odt,.pptx,.png,.jpg,.jpeg,.webp,image/*';
 function rowsToLines(rows,requireHeader){
@@ -1087,7 +1119,7 @@ async function loadRosterFile(fileList){
   if(files.some(f=>f.size>20*1024*1024)){S.form.fileErr='20MB 이하 파일만 읽을 수 있습니다.';renderSheet();return}
   S.form.reading='파일을 읽는 중…';S.form.fileErr='';S.form.fileName=files.map(f=>f.name).join(', ');S.form.aiUsed=files.some(f=>fileKind(f)!=='sheet');renderSheet();
   try{const text=await readRosterFiles(files);if(!S.form)return;S.form.text=text;if(!text)S.form.fileErr='명단 형식을 찾지 못했습니다. 첫 줄에 이름·팀 제목이 있는 명단 파일로 올려 주세요. 근무계획표 표는 claude.ai 버전에서 AI로 읽을 수 있습니다.'}
-  catch(e){if(S.form){S.form.fileErr=e instanceof ReadErr?e.message:'파일을 읽지 못했습니다. 엑셀(.xlsx)이나 CSV로 다시 저장해 올려 주세요.';S.form.fileName='';S.form.aiUsed=false}}
+  catch(e){if(S.form){S.form.fileErr=e instanceof ReadErr?e.message:'파일을 읽지 못했습니다 ('+String(e&&(e.message||e.name)||e).slice(0,80)+'). 화면을 캡처해 보내 주세요.';console.error(e);S.form.fileName='';S.form.aiUsed=false}}
   if(S.form){S.form.reading='';renderSheet()}
 }
 
@@ -1096,7 +1128,7 @@ function viewSettings(){
   const c=S.config;
   let prev='';for(let i=0;i<9;i++){const d=addDays(c.anchorDate,i);prev+='<tr><td class="num">'+fmtShort(d)+'</td>'+[1,2,3].map(t=>'<td>'+shBadge(teamStatus(t,d))+'</td>').join('')+'</tr>'}
   const sampleCount=Object.values(S.members).filter(m=>m.sample).length;
-  return '<h2>설정</h2>'+adminListCard()+
+  return '<h2>설정 <span class="sub ver">버전 2026.10.26-3</span></h2>'+adminListCard()+
   '<div class="card stack"><h3>근무 패턴 기준</h3><p class="sub" style="margin:0">주간 → 종일 → 비번 → 휴일 → 야간 → 비번 6일 순환입니다. 기준일에 주간 근무하는 팀과 야간 근무하는 팀을 지정하면 나머지 날짜가 자동 계산됩니다.</p>'+
   '<div class="fgrid"><div class="field"><label for="sAnchor">기준일</label><input type="date" class="inp" id="sAnchor" value="'+esc(c.anchorDate)+'"></div><div class="field"><label for="sDay">기준일 주간 근무팀</label><select class="inp" id="sDay">'+[1,2,3].map(t=>'<option value="'+t+'"'+(+c.dayTeam===t?' selected':'')+'>'+t+'팀</option>').join('')+'</select></div>'+
   '<div class="field"><label for="sNight">기준일 야간 근무팀</label><select class="inp" id="sNight">'+[1,2,3].map(t=>'<option value="'+t+'"'+(+c.nightTeam===t?' selected':'')+'>'+t+'팀</option>').join('')+'</select></div></div>'+
@@ -1300,7 +1332,7 @@ function viewLogin(){
     '<div class="field"><label for="lgPin">비밀번호</label><input class="inp" type="password" id="lgPin" autocomplete="current-password"></div>'+
     (L.err?'<p class="err" role="alert">'+esc(L.err)+'</p>':'')+
     '<button class="btn primary big" type="submit"'+(L.busy?' disabled':'')+'>'+(L.busy?'확인하는 중…':(adm?'관리자로 로그인':'로그인'))+'</button>'+
-    '<p class="sub" style="margin:0">계정이나 비밀번호를 모르면 슈퍼관리자에게 문의하세요. 로그인은 이 기기에 유지됩니다.</p></form></div>';
+    '<p class="sub" style="margin:0">계정이나 비밀번호를 모르면 슈퍼관리자에게 문의하세요. 로그인은 이 기기에 유지됩니다.</p><p class="sub ver" style="margin:0;text-align:right">버전 2026.10.26-3</p></form></div>';
 }
 const authMsg=e=>{const c=e&&e.code||'';
   if(/invalid-credential|wrong-password|user-not-found|invalid-email|invalid-login/.test(c))return '이름 또는 비밀번호가 맞지 않습니다.';
