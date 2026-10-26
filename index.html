@@ -497,7 +497,7 @@ const sectorFor=(i,k)=>(S.config.sectors||DEF.sectors)[(i+k)%3]||((i+k)%3+1)+'�
 const queues={};
 function write(path,fn){const p=(queues[path]||Promise.resolve()).then(fn).catch(e=>{handleErr(e);throw e});queues[path]=p.catch(()=>{});return p}
 function handleErr(e){const c=e&&e.code;
-  if(c==='permission-denied'||c==='invalid_argument')toast('저장 권한이 없습니다. 관리자 명단에 있는지, Firestore 보안 규칙을 새로 게시했는지 확인해 주세요.');
+  if(c==='permission-denied'||c==='invalid_argument'){S.denied=true;toast('저장이 거부되었습니다. Firebase 콘솔의 Firestore 규칙을 새 firestore.rules로 게시했는지 확인해 주세요.');render(true)}
   else if(c==='quota_exceeded')toast('저장 공간이 가득 찼습니다. 지난 기록을 정리해 주세요.');
   else if(c==='resource_exhausted')toast('요청이 많습니다. 잠시 후 다시 시도해 주세요.');
   else toast('저장하지 못했습니다. 잠시 후 다시 시도해 주세요.')}
@@ -541,7 +541,7 @@ function doRender(){
   if(S.failed){m.innerHTML='<div class="view">'+emptyState('근무편성 저장소에 연결할 수 없습니다',S.failMsg||'인터넷 연결을 확인한 뒤 다시 열어 주세요.')+'</div>';return}
   const views={me:viewMe,board:viewBoard,status:viewStatus,duty:viewDuty,people:viewPeople,settings:viewSettings};
   const withDate=(S.tab==='me'&&!(S.me&&mem(S.me)))||['board','status'].includes(S.tab);
-  const deny=false?'<div class="denied" role="alert"><b>이 휴대폰의 claude.ai 계정은 저장 권한이 없어 수정 내용이 저장되지 않습니다.</b><span>앱 소유자가 공유 메뉴에서 이 계정의 이메일을 <b>편집자</b>로 초대하고, "링크가 있는 모든 사용자" 공유를 꺼야 저장됩니다. 링크 공유가 켜져 있으면 초대한 편집자도 보기 권한으로 낮아집니다.</span></div>':'';
+  const deny=S.admin&&S.denied?'<div class="denied" role="alert"><b>Firebase가 저장을 거부했습니다.</b><span>Firebase 콘솔 → Firestore Database → 규칙 탭에 최신 firestore.rules(버전 2026.10.27-5) 내용을 통째로 붙여 넣고 <b>게시</b>한 뒤, 이 화면을 새로고침해 주세요. 계속되면 인원·경력에서 이 사람이 관리자 명단에 있는지 확인해 주세요.</span></div>':'';
   m.innerHTML=deny+(withDate?dateBar():'')+'<div class="view">'+views[S.tab]()+'</div>';
 }
 function emptyState(t,p,extra){return '<div class="empty-state"><h3>'+esc(t)+'</h3><p>'+esc(p)+'</p>'+(extra||'')+'</div>'}
@@ -1343,7 +1343,7 @@ function viewSettings(){
   const c=S.config;
   let prev='';for(let i=0;i<9;i++){const d=addDays(c.anchorDate,i);prev+='<tr><td class="num">'+fmtShort(d)+'</td>'+[1,2,3].map(t=>'<td>'+shBadge(teamStatus(t,d))+'</td>').join('')+'</tr>'}
   const sampleCount=Object.values(S.members).filter(m=>m.sample).length;
-  return '<h2>설정 <span class="sub ver">버전 2026.10.27-4</span></h2>'+adminListCard()+
+  return '<h2>설정 <span class="sub ver">버전 2026.10.27-5</span></h2>'+adminListCard()+
   '<div class="card stack"><h3>근무 패턴 기준</h3><p class="sub" style="margin:0">주간 → 종일 → 비번 → 휴일 → 야간 → 비번 6일 순환입니다. 기준일에 주간 근무하는 팀과 야간 근무하는 팀을 지정하면 나머지 날짜가 자동 계산됩니다.</p>'+
   '<div class="fgrid"><div class="field"><label for="sAnchor">기준일</label><input type="date" class="inp" id="sAnchor" value="'+esc(c.anchorDate)+'"></div><div class="field"><label for="sDay">기준일 주간 근무팀</label><select class="inp" id="sDay">'+[1,2,3].map(t=>'<option value="'+t+'"'+(+c.dayTeam===t?' selected':'')+'>'+t+'팀</option>').join('')+'</select></div>'+
   '<div class="field"><label for="sNight">기준일 야간 근무팀</label><select class="inp" id="sNight">'+[1,2,3].map(t=>'<option value="'+t+'"'+(+c.nightTeam===t?' selected':'')+'>'+t+'팀</option>').join('')+'</select></div></div>'+
@@ -1539,7 +1539,8 @@ const roleOf=m=>isSuper(m)?'super':isAdminRole(m)?'admin':'worker';
 const ROLE_LABEL={super:'슈퍼관리자',admin:'관리자',worker:'근무자'};
 const mayWrite=()=>true;
 const accountOf=mid=>{const e=Object.entries(S.users).find(([u,v])=>v.memberId===mid);return e?{uid:e[0],...e[1]}:null};
-function applySession(){const s=S.session,p=S.profile;S.admin=!!(s&&p&&s.mode==='admin'&&(p.role==='admin'||p.role==='super'));S.edit=!!S.admin;if(s&&s.mid)S.me=s.mid}
+function effRole(p,m){if(!p)return 'worker';m=m||mem(p.memberId);if(p.role==='super'||isSuper(m))return 'super';if(p.role==='admin'||isAdminRole(m))return 'admin';return 'worker'}
+function applySession(){const s=S.session,p=S.profile;const r=effRole(p);S.admin=!!(s&&p&&s.mode==='admin'&&(r==='admin'||r==='super'));S.edit=!!S.admin;if(s&&s.mid)S.me=s.mid}
 function logout(){closeSheet();S.login={mode:S.login.mode||'worker',name:'',err:''};firebase.auth().signOut()}
 function viewLogin(){
   const L=S.login;
@@ -1557,7 +1558,7 @@ function viewLogin(){
     '<div class="field"><label for="lgPin">비밀번호</label><input class="inp" type="password" id="lgPin" autocomplete="current-password"></div>'+
     (L.err?'<p class="err" role="alert">'+esc(L.err)+'</p>':'')+
     '<button class="btn primary big" type="submit"'+(L.busy?' disabled':'')+'>'+(L.busy?'확인하는 중…':(adm?'관리자로 로그인':'로그인'))+'</button>'+
-    '<p class="sub" style="margin:0">계정이나 비밀번호를 모르면 슈퍼관리자에게 문의하세요. 로그인은 이 기기에 유지됩니다.</p><p class="sub ver" style="margin:0;text-align:right">버전 2026.10.27-4</p></form></div>';
+    '<p class="sub" style="margin:0">계정이나 비밀번호를 모르면 슈퍼관리자에게 문의하세요. 로그인은 이 기기에 유지됩니다.</p><p class="sub ver" style="margin:0;text-align:right">버전 2026.10.27-5</p></form></div>';
 }
 const authMsg=e=>{const c=e&&e.code||'';
   if(/invalid-credential|wrong-password|user-not-found|invalid-email|invalid-login/.test(c))return '이름 또는 비밀번호가 맞지 않습니다.';
@@ -1668,8 +1669,8 @@ function startData(){
   stopData();const db=S.db;const onErr=e=>{S.live=false;if(e&&e.code==='permission-denied'){}render()};
   let got=0;const mark=()=>{got++;if(got>=2)S.live=true;render()};
   unsubs.push(db.doc('config/main').onSnapshot(s=>{S.config={...clone(DEF),...(s.exists?s.data():{})};mark()},onErr));
-  unsubs.push(db.collection('members').onSnapshot(s=>{const o={};s.docs.forEach(d=>{o[d.id]={id:d.id,...d.data()}});S.members=o;S.loaded=true;mark();if(S.sheet&&S.sheet.kind==='slot')renderSheet()},onErr));
-  unsubs.push(db.collection('users').onSnapshot(s=>{const o={};s.docs.forEach(d=>{o[d.id]=d.data()});S.users=o;const me=S.session&&o[S.session.uid];if(me&&S.profile&&me.role!==S.profile.role){S.profile=me;applySession()}render()},onErr));
+  unsubs.push(db.collection('members').onSnapshot(s=>{const o={};s.docs.forEach(d=>{o[d.id]={id:d.id,...d.data()}});S.members=o;S.loaded=true;if(S.session){const was=S.admin;applySession();if(was!==S.admin)render(true)}mark();if(S.sheet&&S.sheet.kind==='slot')renderSheet()},onErr));
+  unsubs.push(db.collection('users').onSnapshot(s=>{const o={};s.docs.forEach(d=>{o[d.id]=d.data()});S.users=o;const me=S.session&&o[S.session.uid];if(me&&S.profile&&me.role!==S.profile.role){S.profile=me;applySession()}if(S.admin&&me&&S.profile&&effRole(me)!==me.role&&!S.healing){S.healing=true;syncRoles([S.profile.memberId]).finally(()=>{S.healing=false})}render()},onErr));
   if(S.profile&&(S.profile.role==='admin'||S.profile.role==='super'))unsubs.push(db.collection('careers').onSnapshot(s=>{const o={};s.docs.forEach(d=>{o[d.id]=d.data()});S.careers=o;render()},onErr));
   unsubs.push(db.collection('duties').where('date','>=',cutoff).onSnapshot(s=>{S.duties=s.docs.map(d=>({id:d.id,...d.data()}));render();if(S.sheet&&S.sheet.kind==='slot')renderSheet()},onErr));
   unsubs.push(db.collection('plans').where('date','>=',cutoff).onSnapshot(s=>{const o={};s.docs.forEach(d=>{o[d.id]=d.data()});S.plans=o;render()},onErr));
@@ -1678,14 +1679,14 @@ function startData(){
 async function onSignedIn(user){
   let snap;try{snap=await S.db.doc('users/'+user.uid).get()}catch(e){snap=null}
   if(!snap||!snap.exists){S.login.err='이 계정에 연결된 인원 정보가 없습니다. 슈퍼관리자에게 문의하세요.';S.login.busy=false;await firebase.auth().signOut();return}
-  const p=snap.data();S.profile=p;
+  const p=snap.data();S.profile=p;let pm=null;try{const ms=await S.db.doc('members/'+p.memberId).get();if(ms.exists)pm={id:ms.id,...ms.data()}}catch(e){}const er=effRole(p,pm);
   let mode=S.pendingMode||lsGet('mode:'+user.uid)||'worker';S.pendingMode=null;
-  if(p.role==='super')mode='admin';
-  if(mode==='admin'&&p.role==='worker'){S.login.err='관리자 모드는 관리자 명단에 있는 사람만 쓸 수 있습니다. 근무자로 로그인하세요.';S.login.busy=false;S.login.mode='worker';await firebase.auth().signOut();return}
+  if(er==='super')mode='admin';
+  if(mode==='admin'&&er==='worker'){S.login.err='관리자 모드는 관리자 명단에 있는 사람만 쓸 수 있습니다. 근무자로 로그인하세요.';S.login.busy=false;S.login.mode='worker';await firebase.auth().signOut();return}
   lsSet('mode:'+user.uid,mode);
   S.session={uid:user.uid,mid:p.memberId,mode};applySession();
   S.tab=mode==='admin'?'board':'me';S.date=opDate();S.meMonth=S.date.slice(0,7);S.login.busy=false;S.login.err='';
-  startData();toast((p.name||'')+'님, '+(p.role==='super'?'슈퍼관리자':S.admin?'관리자':'근무자')+' 모드로 로그인했습니다');render(true);
+  startData();if(S.session&&pm){S.members[pm.id]=S.members[pm.id]||pm;applySession()}toast((p.name||'')+'님, '+(er==='super'?'슈퍼관리자':S.admin?'관리자':'근무자')+' 모드로 로그인했습니다');render(true);
 }
 render();
 (async()=>{
