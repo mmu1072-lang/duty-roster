@@ -254,7 +254,25 @@ button.chr:hover{border-color:var(--accent);transform:translateY(-2px)}
 .pchip{display:inline-flex;align-items:center;gap:6px;font-size:13px;padding:4px 10px;border-radius:999px;border:1px dashed var(--line);background:var(--surface)}
 .note-box{white-space:pre-wrap;font-size:14px;background:var(--surface2);border-radius:8px;padding:10px 12px;border:1px solid var(--line)}
 details.rot{border-top:1px solid var(--line);padding-top:10px}
-details.rtab td,.rtab th{text-align:center;padding:5px 6px}.rtab td.tm{text-align:left}.rtab td.rest{text-align:left;color:var(--muted);font-size:12px;white-space:normal;min-width:120px}
+details.ttwrap{display:flex;flex-direction:column;gap:8px}
+.ttab{border-collapse:separate;border-spacing:0;font-size:13px;min-width:860px}
+.ttab th,.ttab td{border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:5px 6px;text-align:center;white-space:nowrap}
+.ttab thead th,.ttab tr:first-child th,.ttab tr:nth-child(2) th{font-size:12px}
+.ttab th.grp-mokpo{background:color-mix(in srgb,var(--t1) 12%,var(--surface));color:var(--ink)}
+.ttab th.grp-jindo{background:color-mix(in srgb,var(--t2) 12%,var(--surface));color:var(--ink)}
+.ttab th.grp-sinan{background:color-mix(in srgb,var(--t3) 12%,var(--surface));color:var(--ink)}
+.ttab th.grp-chief{background:var(--surface2);color:var(--ink)}
+.ttab th.sn{font-weight:600;color:var(--muted)}
+.ttab .tt-time{position:sticky;left:0;background:var(--surface);z-index:1;text-align:left;font-family:var(--f-mono);font-size:12px;color:var(--ink)}
+.ttab td.tc{min-width:62px;line-height:1.2}
+.ttab td.tc b{display:block;font-weight:600;font-size:13px}
+.ttab td.tc i{display:block;font-style:normal;font-family:var(--f-mono);font-size:10px;color:var(--muted)}
+.ttab td.tc.me{background:var(--accent-soft);box-shadow:inset 0 0 0 2px var(--accent)}
+.ttab td.hand{color:var(--muted);background:var(--surface2)}
+.ttab td.tt-rest,.ttab th.tt-rest{text-align:left;white-space:normal;min-width:150px;font-size:12px;color:var(--muted)}
+.ttab tr>*:first-child{border-left:1px solid var(--line)}
+.ttab tr:first-child>*{border-top:1px solid var(--line)}
+.rtab td,.rtab th{text-align:center;padding:5px 6px}.rtab td.tm{text-align:left}.rtab td.rest{text-align:left;color:var(--muted);font-size:12px;white-space:normal;min-width:120px}
 .rot summary{cursor:pointer;font-weight:600;font-size:14px}
 .tscroll{overflow-x:auto;margin-top:10px}
 table{border-collapse:collapse;width:100%;font-size:13px}
@@ -572,11 +590,10 @@ function viewMe(){
     const {res}=resolved(S.date,p.t);
     const mates=res[p.a.k][p.g].filter((c,i)=>i!==p.i).map(c=>c.shown?esc(nameOf(c.shown)):'<span class="sub">결원</span>');
     body+='<div class="stack"><h3>같은 조 근무자</h3><p style="margin:0">'+(mates.join(' · ')||'—')+'</p></div>';
-    const fl=findLetter(S.date,p.c.shown);if(fl&&fl.doc.rot&&fl.doc.rot[fl.k])body+=rotTimeline(fl);else if(p.a.k==='mokpo')body+=myTimeline(p.shift,p.g,p.i);
-    else body+='<div class="stack"><h3>담당 섹터</h3><div class="secs" style="margin:0"><span class="sec" style="font-size:15px;padding:6px 12px"><b>'+esc(p.a.n.replace('구역',''))+'</b>'+esc(fixedSector(p.a.k,p.i))+'</span></div><p class="sub" style="margin:0">'+esc(p.a.n)+'는 1조·2조가 교대로 근무합니다. 세부 교대 시간은 팀장 공지를 따릅니다.</p></div>';
-  }else if(findLetter(S.date,m.id)){
-    const fl=findLetter(S.date,m.id);const sh=teamStatus(fl.t,S.date);
-    title='10섹터<small>'+esc(fl.L)+' · '+fl.t+'팀</small>';sub=shBadge(sh)+' '+SHIFT_TIME[sh];body=rotTimeline(fl);
+    body+=myRotHtml(S.date,p.c.shown)||(p.a.k==='mokpo'?myTimeline(p.shift,p.g,p.i):'');
+  }else if(myLetters(S.date,m.id).length){
+    const fl=myLetters(S.date,m.id);const sh=teamStatus(fl[0].t,S.date);
+    title='10섹터<small>팀장석 '+esc(fl[0].L)+' · '+fl[0].t+'팀</small>';sub=shBadge(sh)+' '+SHIFT_TIME[sh];body=fl.map(rotTimeline).join('');
   }else if(info.subs.length){
     const x=info.subs[0];
     title='대직 근무<small>'+dutyTeam(x)+'팀</small>';
@@ -653,10 +670,12 @@ function boardCard(d,t){
       '<button class="btn sm danger'+(S.armed==='clear'+t?' armed':'')+'" data-act="clear" data-t="'+t+'"'+(doc?'':' disabled')+'>'+(S.armed==='clear'+t?'한 번 더 누르면 비움':'편성 비우기')+'</button>'+
       '<span class="sub num" style="margin-left:auto">배치 '+placed+'/'+need+' · 가용 '+r.avail.length+'명</span></div>';
   }
+  h+=timetableHtml(d,t,st,doc)+'<div class="row between" style="margin-top:4px"><h3>기호별 자리 배치</h3><span class="sub">A~F 목포 · G~N 진도 · O~R 신안 · S·T 10섹터(팀장)</span></div>'+(S.admin?'':'<details class="rot"><summary>자리 배치 보기</summary>');
   h+='<div class="areas">'+AREAS.map(a=>{
     return '<div class="area"><div class="area-h"><h4>'+a.n+'</h4><span>'+a.per+'명 × 2조</span></div>'+GROUPS.map(g=>{
       const cells=res[a.k][g];const iss=groupIssue(cells);
       return '<div class="grp"><div class="grp-h">'+g+'조'+(iss?' <span class="flag '+iss.sev+'">'+iss.msg+'</span>':'')+'</div><div class="cells">'+cells.map((c,i)=>cellHtml(d,t,a.k,g,i,c)).join('')+'</div></div>'}).join('')+'</div>'}).join('')+'</div>';
+  if(!S.admin)h+='</details>';
   if(S.admin){
     h+='<div class="stack"><h3>미배치 가용 인원 <span class="sub num">'+pool.length+'명</span></h3>'+(pool.length?'<div class="pool">'+pool.map(id=>'<span class="pchip">'+lvDot(id)+esc(nameOf(id))+(mem(id)&&+mem(id).team!==+t?' <span class="sub">대직</span>':'')+'</span>').join('')+'</div>':'<p class="sub" style="margin:0">모든 가용 인원이 배치되었습니다.</p>')+'</div>';
     const short=need-r.avail.length;
@@ -664,7 +683,6 @@ function boardCard(d,t){
     if(S.edit)h+='<div class="field"><label for="note_'+t+'">근무자 공지 메모</label><textarea class="inp" rows="2" id="note_'+t+'" data-note="'+t+'" placeholder="예: 진도구역 1조는 장비 점검으로 09:30 교대">'+esc(doc&&doc.note||'')+'</textarea></div>';
     else if(doc&&doc.note)h+='<div class="note-box">'+esc(doc.note)+'</div>';
   }else if(doc&&doc.note){h+='<div class="note-box">'+esc(doc.note)+'</div>'}
-  h+=importedRot(doc,st)||rotationTable(st,res.mokpo);
   return h+'</section>';
 }
 function cellHtml(d,t,a,g,i,c){
@@ -1171,20 +1189,40 @@ async function applyDutyLog(log,src){
   return {td,tn,fixes:[...new Set(fixes)],unknown:[...new Set(unknown)],duties:k,placed:Object.keys(D).length+Object.keys(N).length};
 }
 function rotKeys(st){return st==='주간'?['day']:st==='야간'?['night']:['day','night']}
-function importedRot(doc,st){
-  if(!doc||!doc.rot)return '';const keys=rotKeys(st).filter(k=>doc.rot[k]);if(!keys.length)return '';
-  return keys.map(k=>{const R=doc.rot[k],Lm=(doc.letters||{})[k]||{};const nm=L=>L?(Lm[L]?esc(nameOf(Lm[L])):'<span class="sub">'+esc(L)+'</span>'):'';
-    const secs=Object.keys(R.sec).sort((a,b)=>a-b);
-    const body=R.times.map((tm,c)=>'<tr><td class="tm">'+esc(tm)+'</td>'+(c===0?'<td colspan="'+secs.length+'" class="sub">인수인계 (전원 대기)</td>':secs.map(n=>'<td>'+nm(R.sec[n][c])+'</td>').join(''))+'<td class="rest">'+(R.rest[c]||[]).map(nm).join(', ')+'</td></tr>').join('');
-    return '<details class="rot" open><summary>시간별 섹터 근무표 ('+(k==='day'?'주간':'야간')+') · 근무일지 기준</summary><div class="tscroll"><table class="rtab"><thead><tr><th>시간</th>'+secs.map(n=>'<th>'+n+'섹터</th>').join('')+'<th>휴게</th></tr></thead><tbody>'+body+'</tbody></table></div></details>'}).join('');
+
+
+
+/* ---------- 시간별 섹터 근무표(타임테이블) ---------- */
+const ROT_DEFAULT={"day":{"times":["08:40~09:00","09:00~09:40","09:40~10:20","10:20~11:00","11:00~11:40","11:40~12:20","12:20~13:00","13:00~13:40","13:40~14:20","14:20~15:00","15:00~15:30","15:30~16:00","16:00~16:40","16:40~17:20","17:20~18:00"],"sec":{"1":["","A","C","B","D","F","E","A","C","B","D","A","F","E","D"],"2":["","B","A","C","E","D","F","B","A","C","E","B","D","F","E"],"3":["","C","B","A","F","E","D","C","B","A","F","C","E","D","F"],"4":["","G","J","I","K","N","M","H","G","J","L","I","K","N","M"],"5":["","H","G","J","L","K","N","I","H","G","M","J","L","K","N"],"6":["","I","H","G","M","L","K","J","I","H","N","G","M","L","K"],"7":["","J","I","H","N","M","L","G","J","I","K","H","N","M","L"],"8":["","O","P","O","Q","R","Q","P","O","P","R","O","Q","R","Q"],"9":["","P","O","P","R","Q","R","O","P","O","Q","P","R","Q","R"],"10":["","T","T","T","S","S","S","T","T","T","S","T","S","S","S"]},"rest":[[],["D","E","F","L","M","N","Q","R","S"],["D","E","F","L","M","N","Q","R","S"],["D","E","F","L","M","N","Q","R","S"],["A","B","C","G","H","I","J","O","P","T"],["A","B","C","G","H","I","J","O","P","T"],["A","B","C","G","H","I","J","O","P","T"],["D","E","F","K","L","M","N","Q","R","S"],["D","E","F","K","L","M","N","Q","R","S"],["D","E","F","K","L","M","N","Q","R","S"],["A","B","C","G","H","I","J","O","P","T"],["D","E","F","K","L","M","N","Q","R","S"],["B","C","G","I","J","O","T"],["C","G","I","J","O","T"],["C","G","I","J","O","T"]]},"night":{"times":["17:40~18:00","18:00~19:30","19:30~21:00","21:00~22:00","22:00~23:00","23:00~00:00","00:00~01:00","01:00~02:00","02:00~03:00","03:00~04:00","04:00~05:00","05:00~06:00","06:00~07:00","07:00~08:00","08:00~09:00"],"sec":{"1":["","A","D","C","B","A","F","E","D","C","B","A","F","E","D"],"2":["","B","E","A","C","B","D","F","E","A","C","B","D","F","E"],"3":["","C","F","B","A","C","E","D","F","B","A","C","E","D","F"],"4":["","G","K","J","I","H","N","M","L","G","J","I","K","N","M"],"5":["","H","L","G","J","I","K","N","M","H","G","J","L","K","N"],"6":["","I","M","H","G","J","L","K","N","I","H","G","M","L","K"],"7":["","J","N","I","H","G","M","L","K","J","I","H","N","M","L"],"8":["","O","Q","P","O","P","R","Q","R","O","P","O","Q","R","Q"],"9":["","P","R","O","P","O","Q","R","Q","P","O","P","R","Q","R"],"10":["","T","S","T","T","T","S","S","S","T","T","T","S","S","S"]},"rest":[[],["D","E","K","L","M","N","Q","R"],["A","B","C","G","H","I","J","O","P","T"],["D","E","F","K","L","M","N","Q","R","S"],["D","E","F","K","L","M","N","Q","R","S"],["D","E","F","K","L","M","N","Q","R","S"],["A","B","C","G","H","I","J","O","P","T"],["A","B","C","G","H","I","J","O","P","T"],["A","B","C","G","H","I","J","O","P","T"],["D","E","F","K","L","M","N","Q","R","S"],["D","E","F","K","L","M","N","Q","R","S"],["D","E","F","K","L","M","N","Q","R","S"],["A","B","C","G","H","I","J","O","P","T"],["A","C","G","H","I","J","P","T"],["A","C","G","H","I","J","P","T"]]}};
+const SEC_GROUPS=[{n:'목포구역',k:'mokpo',secs:['1','2','3']},{n:'진도구역',k:'jindo',secs:['4','5','6','7']},{n:'신안구역',k:'sinan',secs:['8','9']},{n:'팀장석',k:'chief',secs:['10']}];
+function secName(n){n=+n;const c=S.config;if(n<=3)return (c.sectors||DEF.sectors)[n-1]||n+'섹터';if(n<=7)return (c.sectorsJindo||DEF.sectorsJindo)[n-4]||n+'섹터';if(n<=9)return (c.sectorsSinan||DEF.sectorsSinan)[n-8]||n+'섹터';return '10섹터'}
+const rotFor=(doc,k)=>(doc&&doc.rot&&doc.rot[k])||ROT_DEFAULT[k];
+function letterMap(d,t,k){
+  const {doc,res}=resolved(d,t);const m={};
+  Object.keys(LETTERS).forEach(a=>GROUPS.forEach(g=>(res[a][g]||[]).forEach((c,i)=>{const L=letterOf(a,g,i);if(L&&c&&c.shown)m[L]=c.shown})));
+  const ch=doc&&doc.chief&&doc.chief[k];const ld=leaders(t);
+  const live=id=>{if(!id)return null;const o=outDuty(d,id);return o?(o.subId||null):id};
+  m.S=live(ch&&ch.S||(ld.find(x=>x.role==='정팀장')||{}).id);m.T=live(ch&&ch.T||(ld.find(x=>x.role==='부팀장')||{}).id);
+  Object.keys(m).forEach(L=>{if(!m[L])delete m[L]});return m;
 }
-function findLetter(d,mid){for(const t of workingTeams(d)){const doc=S.assigns[d+'_'+t];if(!doc||!doc.letters||!(doc.published||S.admin))continue;for(const k of ['day','night']){const Lm=doc.letters[k]||{};const L=Object.keys(Lm).find(x=>Lm[x]===mid);if(L)return {t,k,L,doc}}}return null}
+function timetableHtml(d,t,st,doc){
+  return rotKeys(st).map(k=>{const R=rotFor(doc,k),M=letterMap(d,t,k);const fromLog=!!(doc&&doc.rot&&doc.rot[k]);
+    const cell=L=>{if(!L)return '<td class="tc"></td>';const id=M[L];return '<td class="tc'+(id&&id===S.me?' me':'')+'">'+(id?'<b>'+esc(nameOf(id))+'</b>':'<span class="sub">비어 있음</span>')+'<i>'+esc(L)+'</i></td>'};
+    const head1='<tr><th rowspan="2" class="tt-time">시간</th>'+SEC_GROUPS.map(g=>'<th colspan="'+g.secs.length+'" class="grp-'+g.k+'">'+g.n+'</th>').join('')+'<th rowspan="2" class="tt-rest">휴게</th></tr>';
+    const head2='<tr>'+SEC_GROUPS.map(g=>g.secs.map(n=>'<th class="grp-'+g.k+' sn">'+esc(secName(n))+'</th>').join('')).join('')+'</tr>';
+    const ncol=SEC_GROUPS.reduce((s,g)=>s+g.secs.length,0);
+    const body=R.times.map((tm,c)=>'<tr><th class="tt-time num">'+esc(tm)+'</th>'+(c===0?'<td class="tc hand" colspan="'+ncol+'">인수인계 · 전원 대기</td>':SEC_GROUPS.map(g=>g.secs.map(n=>cell((R.sec[n]||[])[c])).join('')).join(''))+'<td class="tt-rest">'+(R.rest[c]||[]).map(L=>M[L]?esc(nameOf(M[L])):esc(L)).join(', ')+'</td></tr>').join('');
+    return '<div class="ttwrap"><div class="row between"><h3>'+(k==='day'?'주간':'야간')+' 시간별 섹터 근무표</h3><span class="sub">'+(fromLog?'근무일지 기준':'기본 순환표 기준')+' · 이름 아래 글자는 자리 기호</span></div><div class="tscroll"><table class="ttab">'+head1+head2+body+'</table></div></div>'}).join('');
+}
+function myLetters(d,mid){const out=[];for(const t of workingTeams(d)){const doc=S.assigns[d+'_'+t];if(!doc||!(doc.published||S.admin))continue;
+  rotKeys(teamStatus(t,d)).forEach(k=>{const M=letterMap(d,t,k);const L=Object.keys(M).find(x=>M[x]===mid);if(L)out.push({t,k,L,doc})})}return out}
 function rotTimeline(f){
-  const R=f.doc.rot&&f.doc.rot[f.k];if(!R)return '';
-  const rows=R.times.map((tm,c)=>{let lab='대기',on=false;if(c===0)lab='인수인계';else{const n=Object.keys(R.sec).find(n=>R.sec[n][c]===f.L);if(n){lab=n+'섹터';on=true}else if((R.rest[c]||[]).includes(f.L))lab='휴게'}
+  const R=rotFor(f.doc,f.k);const fromLog=!!(f.doc&&f.doc.rot&&f.doc.rot[f.k]);
+  const rows=R.times.map((tm,c)=>{let lab='대기',on=false;if(c===0)lab='인수인계';else{const n=Object.keys(R.sec).find(n=>R.sec[n][c]===f.L);if(n){const grp=SEC_GROUPS.find(g=>g.secs.includes(n));lab=(grp&&grp.k!=='chief'?grp.n.replace('구역','')+' ':'')+secName(n);on=true}else if((R.rest[c]||[]).includes(f.L))lab='휴게'}
     return '<div class="tl '+(on?'on':'off')+'"><div class="tt">'+esc(tm)+' · '+esc(lab)+'</div></div>'}).join('');
-  return '<div class="stack"><h3>시간별 섹터 ('+(f.k==='day'?'주간':'야간')+') · 배치 기호 '+esc(f.L)+'</h3><p class="sub" style="margin:0">근무일지의 시간별 근무 현황 기준입니다.</p><div class="timeline">'+rows+'</div></div>';
+  return '<div class="stack"><h3>'+(f.k==='day'?'주간':'야간')+' 시간별 섹터 · 자리 기호 '+esc(f.L)+'</h3><p class="sub" style="margin:0">'+(fromLog?'근무일지의 시간별 근무 현황 기준입니다.':'기본 순환표 기준입니다. 근무일지를 올리면 그날 실제 순서로 바뀝니다.')+'</p><div class="timeline">'+rows+'</div></div>';
 }
+const myRotHtml=(d,mid)=>myLetters(d,mid).map(rotTimeline).join('');
 const ACCEPT='.xlsx,.xls,.ods,.csv,.tsv,.txt,.pdf,.hwp,.hwpx,.odt,.pptx,.png,.jpg,.jpeg,.webp,image/*';
 function rowsToLines(rows,requireHeader){
   rows=rows.filter(r=>r.some(c=>String(c).trim()!==''));if(!rows.length)return '';
@@ -1305,7 +1343,7 @@ function viewSettings(){
   const c=S.config;
   let prev='';for(let i=0;i<9;i++){const d=addDays(c.anchorDate,i);prev+='<tr><td class="num">'+fmtShort(d)+'</td>'+[1,2,3].map(t=>'<td>'+shBadge(teamStatus(t,d))+'</td>').join('')+'</tr>'}
   const sampleCount=Object.values(S.members).filter(m=>m.sample).length;
-  return '<h2>설정 <span class="sub ver">버전 2026.10.27-2</span></h2>'+adminListCard()+
+  return '<h2>설정 <span class="sub ver">버전 2026.10.27-3</span></h2>'+adminListCard()+
   '<div class="card stack"><h3>근무 패턴 기준</h3><p class="sub" style="margin:0">주간 → 종일 → 비번 → 휴일 → 야간 → 비번 6일 순환입니다. 기준일에 주간 근무하는 팀과 야간 근무하는 팀을 지정하면 나머지 날짜가 자동 계산됩니다.</p>'+
   '<div class="fgrid"><div class="field"><label for="sAnchor">기준일</label><input type="date" class="inp" id="sAnchor" value="'+esc(c.anchorDate)+'"></div><div class="field"><label for="sDay">기준일 주간 근무팀</label><select class="inp" id="sDay">'+[1,2,3].map(t=>'<option value="'+t+'"'+(+c.dayTeam===t?' selected':'')+'>'+t+'팀</option>').join('')+'</select></div>'+
   '<div class="field"><label for="sNight">기준일 야간 근무팀</label><select class="inp" id="sNight">'+[1,2,3].map(t=>'<option value="'+t+'"'+(+c.nightTeam===t?' selected':'')+'>'+t+'팀</option>').join('')+'</select></div></div>'+
@@ -1519,7 +1557,7 @@ function viewLogin(){
     '<div class="field"><label for="lgPin">비밀번호</label><input class="inp" type="password" id="lgPin" autocomplete="current-password"></div>'+
     (L.err?'<p class="err" role="alert">'+esc(L.err)+'</p>':'')+
     '<button class="btn primary big" type="submit"'+(L.busy?' disabled':'')+'>'+(L.busy?'확인하는 중…':(adm?'관리자로 로그인':'로그인'))+'</button>'+
-    '<p class="sub" style="margin:0">계정이나 비밀번호를 모르면 슈퍼관리자에게 문의하세요. 로그인은 이 기기에 유지됩니다.</p><p class="sub ver" style="margin:0;text-align:right">버전 2026.10.27-2</p></form></div>';
+    '<p class="sub" style="margin:0">계정이나 비밀번호를 모르면 슈퍼관리자에게 문의하세요. 로그인은 이 기기에 유지됩니다.</p><p class="sub ver" style="margin:0;text-align:right">버전 2026.10.27-3</p></form></div>';
 }
 const authMsg=e=>{const c=e&&e.code||'';
   if(/invalid-credential|wrong-password|user-not-found|invalid-email|invalid-login/.test(c))return '이름 또는 비밀번호가 맞지 않습니다.';
